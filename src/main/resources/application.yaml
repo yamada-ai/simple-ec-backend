@@ -1,0 +1,14 @@
+spring:
+  application:
+    name: simple-ec-backend
+  datasource:
+    url: jdbc:postgresql://localhost:5433/simple_ec
+    username: postgres
+    password: postgres
+    driver-class-name: org.postgresql.Driver
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+  jooq:
+    sql-dialect: POSTGRES

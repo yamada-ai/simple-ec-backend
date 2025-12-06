@@ -1,0 +1,55 @@
+build:
+  maxIssues: 0
+
+config:
+  validation: true
+  warningsAsErrors: false
+
+processors:
+  active: true
+
+console-reports:
+  active: true
+
+output-reports:
+  active: true
+
+complexity:
+  active: true
+  LongParameterList:
+    active: true
+    functionThreshold: 6
+    constructorThreshold: 7
+  LongMethod:
+    active: true
+    threshold: 60
+  LargeClass:
+    active: true
+    threshold: 600
+  ComplexMethod:
+    active: true
+    threshold: 15
+
+formatting:
+  active: true
+  android: false
+  autoCorrect: true
+
+naming:
+  active: true
+  FunctionNaming:
+    active: true
+  ClassNaming:
+    active: true
+  VariableNaming:
+    active: true
+
+potential-bugs:
+  active: true
+
+style:
+  active: true
+  MaxLineLength:
+    active: true
+    maxLineLength: 120
+    excludeCommentStatements: true

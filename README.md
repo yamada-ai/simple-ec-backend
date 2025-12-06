@@ -1,0 +1,186 @@
+# Simple EC Backend
+
+Kotlin + Spring Boot で作る、Stream/Sequence パフォーマンス比較実験用の小規模 EC バックエンド。
+
+## 📌 プロジェクト概要
+
+このプロジェクトは、**Kotlin Sequence と Java Stream の 1対多データ処理における挙動・パフォーマンス比較**を目的とした実験リポジトリです。
+
+### 検証テーマ
+
+- Kotlin `Sequence` vs Java `Stream` (`flatMap`, `mapMulti`) vs カスタム `Spliterator`
+- 1→多の関係（Order → OrderItem）を CSV ストリーミング出力する際の違い
+- 遅延評価における "pull" (Sequence) vs "push" (Stream) の内部挙動
+- Stream/Sequence が標準では join できない制約下での設計パターン
+
+## 🛠 技術スタック
+
+- **Kotlin** 1.9.25
+- **Spring Boot** 3.5.x
+- **PostgreSQL** 17
+- **jOOQ** 3.19.x (型安全 SQL)
+- **Flyway** (DB マイグレーション)
+- **Kotest** (テスト)
+- **Detekt** (静的解析)
+- **OpenAPI Generator** (API スキーマ駆動開発)
+
+## 🚀 セットアップ
+
+### 1. PostgreSQL 起動
+
+```bash
+docker-compose up -d
+```
+
+- PostgreSQL: `localhost:5433` (ポート5432が使用中の場合に5433を使用)
+- pgAdmin: `http://localhost:5050`
+  - Email: `admin@example.com`
+  - Password: `admin`
+
+> **Note**: デフォルトのPostgreSQLポート（5432）が既に使用されている場合、docker-compose.ymlで5433ポートを使用しています。
+
+### 2. 初回セットアップ（マイグレーション & コード生成）
+
+```bash
+# Flywayマイグレーション実行
+./gradlew flywayMigrate
+
+# jOOQコード生成（マイグレーション後に実行）
+./gradlew generateJooq
+
+# ビルド
+./gradlew clean build
+```
+
+> **Note**: `generateJooq`は自動的に`flywayMigrate`に依存するよう設定されています。
+
+### 3. アプリケーション起動
+
+```bash
+./gradlew bootRun
+```
+
+- API: `http://localhost:8080`
+- Swagger UI: `http://localhost:8080/swagger-ui.html`
+
+## 📊 データ投入（実験用）
+
+Admin API でテストデータを投入・削除できます（実験用機能）。
+
+### データ投入
+
+```bash
+# 100 顧客、1000 注文、約 5000 明細を生成
+curl -X POST "http://localhost:8080/admin/seed?customers=100&orders=1000"
+```
+
+### データ削除
+
+```bash
+curl -X DELETE "http://localhost:8080/admin/truncate"
+```
+
+## 🧪 実験用 API
+
+### CSV エクスポート（メインの実験対象）
+
+```bash
+# Kotlin Sequence 版
+curl "http://localhost:8080/api/v1/export/orders?strategy=sequence" > orders_sequence.csv
+
+# Java Stream (flatMap) 版
+curl "http://localhost:8080/api/v1/export/orders?strategy=stream-flatmap" > orders_flatmap.csv
+
+# Java Stream (mapMulti) 版
+curl "http://localhost:8080/api/v1/export/orders?strategy=stream-mapmulti" > orders_mapmulti.csv
+
+# カスタム Spliterator 版
+curl "http://localhost:8080/api/v1/export/orders?strategy=spliterator" > orders_spliterator.csv
+```
+
+## 📁 プロジェクト構成
+
+```
+src/
+├── main/
+│   ├── kotlin/
+│   │   └── com/example/simple_ec_backend/
+│   │       ├── presentation/      # API層（OpenAPI生成）
+│   │       ├── application/       # ユースケース層
+│   │       ├── domain/            # ドメインモデル
+│   │       ├── infrastructure/    # jOOQ, Repository実装
+│   │       └── export/            # CSV エクスポート実装（実験対象）
+│   └── resources/
+│       ├── db/migration/          # Flyway マイグレーション
+│       ├── openapi/               # OpenAPI 定義
+│       └── application.yaml       # 設定ファイル
+└── test/
+    └── kotlin/                    # Kotest テスト
+```
+
+## 🧩 開発タスク
+
+```bash
+# DBマイグレーション
+./gradlew flywayMigrate
+
+# コード生成
+./gradlew generateJooq      # jOOQ (自動的にflywayMigrateを実行)
+./gradlew openApiGenerate   # OpenAPI
+
+# 静的解析
+./gradlew detekt
+
+# テスト実行
+./gradlew test
+
+# ビルド
+./gradlew clean build
+
+# アプリケーション起動
+./gradlew bootRun
+```
+
+### 🛠 トラブルシューティング
+
+**jOOQ生成がエラーになる場合**:
+```bash
+# DBが起動しているか確認
+docker ps | grep simple-ec-postgres
+
+# マイグレーションを先に実行
+./gradlew flywayMigrate
+
+# jOOQ再生成
+./gradlew clean generateJooq
+```
+
+**ポート競合の場合**:
+- `docker-compose.yml`でポート番号を変更
+- `application.yaml`と`build.gradle.kts`のJDBC URLも同様に変更
+
+## 📝 TODO
+
+- [ ] Admin API 実装（データ投入・削除）
+- [ ] CRUD API 実装（Customer, Order, OrderItem）
+- [ ] CSV エクスポート実装
+  - [ ] Kotlin Sequence 版
+  - [ ] Java Stream (flatMap) 版
+  - [ ] Java Stream (mapMulti) 版
+  - [ ] カスタム Spliterator 版
+- [ ] パフォーマンス計測用テスト
+- [ ] フロントエンド（オプション）
+
+## 📖 参考資料
+
+- [Kotlin Sequence](https://kotlinlang.org/docs/sequences.html)
+- [Java Stream API](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/stream/Stream.html)
+- [jOOQ Documentation](https://www.jooq.org/doc/latest/manual/)
+
+## ⚠️ 注意事項
+
+このプロジェクトは **実験・学習目的** です。本番環境での使用は想定していません。
+
+- Admin API (`/admin/*`) は認証なし（実験用）
+- エラーハンドリングは最小限
+- セキュリティ対策は未実装
