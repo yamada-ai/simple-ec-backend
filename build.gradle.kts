@@ -123,7 +123,7 @@ jooq {
 }
 
 tasks.named<nu.studer.gradle.jooq.JooqGenerate>("generateJooq") {
-	allInputsDeclared.set(true)
+	allInputsDeclared.set(false)
 	dependsOn("flywayMigrate")
 }
 
@@ -176,5 +176,5 @@ flyway {
 	url = "jdbc:postgresql://localhost:5433/simple_ec"
 	user = "postgres"
 	password = "postgres"
-	locations = arrayOf("classpath:db/migration")
+	locations = arrayOf("filesystem:src/main/resources/db/migration")
 }

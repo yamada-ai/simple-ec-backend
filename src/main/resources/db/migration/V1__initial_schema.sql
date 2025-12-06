@@ -1,34 +1,34 @@
 -- Initial schema for simple-ec-backend
--- 1対多のStream/Sequence比較検証用
+-- Stream/Sequence comparison for 1-to-many relationships and dynamic column pivoting
 
--- 顧客テーブル
-CREATE TABLE customers (
+-- Customer table
+CREATE TABLE customer (
     id BIGSERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     email VARCHAR(255) NOT NULL UNIQUE,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- 注文テーブル（customers との 1対多の親）
-CREATE TABLE orders (
+-- Order table (1-to-many with customer)
+CREATE TABLE "order" (
     id BIGSERIAL PRIMARY KEY,
-    customer_id BIGINT NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    customer_id BIGINT NOT NULL REFERENCES customer(id) ON DELETE CASCADE,
     order_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     total_amount NUMERIC(12, 2) NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- 注文明細テーブル（orders との 1対多 - 検証のメイン）
-CREATE TABLE order_items (
+-- Order item table (1-to-many with order - main subject for stream/sequence comparison)
+CREATE TABLE order_item (
     id BIGSERIAL PRIMARY KEY,
-    order_id BIGINT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+    order_id BIGINT NOT NULL REFERENCES "order"(id) ON DELETE CASCADE,
     product_name VARCHAR(255) NOT NULL,
     quantity INTEGER NOT NULL CHECK (quantity > 0),
     unit_price NUMERIC(12, 2) NOT NULL CHECK (unit_price >= 0),
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- パフォーマンス最適化用インデックス
-CREATE INDEX idx_orders_customer_id ON orders(customer_id);
-CREATE INDEX idx_orders_order_date ON orders(order_date);
-CREATE INDEX idx_order_items_order_id ON order_items(order_id);
+-- Performance optimization indexes
+CREATE INDEX idx_order_customer_id ON "order"(customer_id);
+CREATE INDEX idx_order_order_date ON "order"(order_date);
+CREATE INDEX idx_order_item_order_id ON order_item(order_id);

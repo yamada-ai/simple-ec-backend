@@ -4,14 +4,37 @@ Kotlin + Spring Boot で作る、Stream/Sequence パフォーマンス比較実�
 
 ## 📌 プロジェクト概要
 
-このプロジェクトは、**Kotlin Sequence と Java Stream の 1対多データ処理における挙動・パフォーマンス比較**を目的とした実験リポジトリです。
+このプロジェクトは、**Kotlin Sequence と Java Stream における「join問題」と「動的列ピボット」のパフォーマンス・設計比較**を目的とした実験リポジトリです。
+
+### 🎯 本質的な課題
+
+Stream/Sequenceは**join機構を持たない**。この制約下で以下の問題にどう対処するかを実験的に検証します：
+
+1. **1→多のjoin問題**
+   - Order → OrderItem のような親子関係を、SQLなしでどう結合するか
+   - 全件取得 → Map化 → アプリ側join の是非
+
+2. **動的列ピボット問題**（本プロジェクトのコア）
+   - ユーザ定義の「注文属性」（Order Attributes）を列として動的にCSV出力したい
+   - 例：`order_id, customer_name, ..., ギフト包装, 配送指示, キャンペーンID`
+   - 属性は0〜10個でユーザが任意に追加可能
+   - これを「行展開」ではなく「列展開」で出力する難しさ
 
 ### 検証テーマ
 
 - Kotlin `Sequence` vs Java `Stream` (`flatMap`, `mapMulti`) vs カスタム `Spliterator`
-- 1→多の関係（Order → OrderItem）を CSV ストリーミング出力する際の違い
+- **動的カスタム項目のピボット処理**をストリーミングで実現できるか
 - 遅延評価における "pull" (Sequence) vs "push" (Stream) の内部挙動
-- Stream/Sequence が標準では join できない制約下での設計パターン
+- メモリ効率・速度・GC挙動の比較
+
+### なぜこの問題が難しいか
+
+- **SQLでのjoin完結が困難**：列が動的なのでSQLのピボットでは対応しきれない
+- **RDBは行方向が得意**：列を動的に増やす処理はDB側で完結させにくい
+- **Stream/Sequenceにjoin不在**：標準では2つのストリームをキーでjoinできない
+- **多くの現場では回避策**：全件メモリ展開 or JSON埋め込み or 行展開で妥協
+
+→ この「誰もまともに向き合っていない問題」に、実装＋実測で答えを出す
 
 ## 🛠 技術スタック
 
@@ -23,6 +46,21 @@ Kotlin + Spring Boot で作る、Stream/Sequence パフォーマンス比較実�
 - **Kotest** (テスト)
 - **Detekt** (静的解析)
 - **OpenAPI Generator** (API スキーマ駆動開発)
+
+## 🗄 DB構成
+
+### 基本エンティティ（DDD: 単数形）
+- `customer`（顧客）
+- `order`（注文）
+- `order_item`（注文明細）→ 1対多のメイン検証対象
+
+### 動的列ピボット用（本プロジェクトのコア）
+- `order_attribute_definition`（注文属性定義）
+  - ユーザが定義するカスタム項目（例：ギフト包装種別、配送指示、キャンペーンID）
+- `order_attribute_value`（注文属性値）
+  - 各注文に対する属性値のスパース行列
+  - `(order_id, attribute_definition_id, value)` 構造
+  - **これをCSV出力時に列方向にピボットする**のが本題
 
 ## 🚀 セットアップ
 
