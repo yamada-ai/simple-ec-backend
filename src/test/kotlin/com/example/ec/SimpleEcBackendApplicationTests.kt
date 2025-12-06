@@ -1,4 +1,4 @@
-package com.example.simple_ec_backend
+package com.example.ec
 
 import org.junit.jupiter.api.Test
 import org.springframework.boot.test.context.SpringBootTest
@@ -7,7 +7,9 @@ import org.springframework.boot.test.context.SpringBootTest
 class SimpleEcBackendApplicationTests {
 
 	@Test
+	@Suppress("EmptyFunctionBlock")
 	fun contextLoads() {
+		// Spring Boot context load test - empty by design
 	}
 
 }

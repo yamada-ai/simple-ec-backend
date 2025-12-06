@@ -10,12 +10,12 @@ buildscript {
 }
 
 plugins {
-	kotlin("jvm") version "1.9.25"
-	kotlin("plugin.spring") version "1.9.25"
+	kotlin("jvm") version "2.0.21"
+	kotlin("plugin.spring") version "2.0.21"
 	id("org.springframework.boot") version "3.5.9-SNAPSHOT"
 	id("io.spring.dependency-management") version "1.1.7"
 	id("nu.studer.jooq") version "8.2"
-	id("io.gitlab.arturbosch.detekt") version "1.23.4"
+	id("io.gitlab.arturbosch.detekt") version "1.23.8"
 	id("org.openapi.generator") version "7.10.0"
 	id("org.flywaydb.flyway") version "10.21.0"
 }
