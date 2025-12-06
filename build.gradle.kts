@@ -112,7 +112,7 @@ jooq {
 						isKotlinNotNullInterfaceAttributes = true
 					}
 					target.apply {
-						packageName = "com.example.simple_ec_backend.infrastructure.jooq"
+						packageName = "com.example.ec.infrastructure.jooq"
 						directory = "build/generated-src/jooq/main"
 					}
 					strategy.name = "org.jooq.codegen.DefaultGeneratorStrategy"
@@ -146,8 +146,8 @@ openApiGenerate {
 	generatorName.set("kotlin-spring")
 	inputSpec.set("$rootDir/src/main/resources/openapi/api.yaml")
 	outputDir.set("$buildDir/generated/openapi")
-	apiPackage.set("com.example.simple_ec_backend.presentation.api")
-	modelPackage.set("com.example.simple_ec_backend.presentation.model")
+	apiPackage.set("com.example.ec.presentation.api")
+	modelPackage.set("com.example.ec.presentation.model")
 	configOptions.set(mapOf(
 		"interfaceOnly" to "true",
 		"useSpringBoot3" to "true",
