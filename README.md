@@ -29,7 +29,7 @@ Kotlin + Spring Boot で作る、Stream/Sequence パフォーマンス比較実�
 ### 1. PostgreSQL 起動
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 - PostgreSQL: `localhost:5433` (ポート5432が使用中の場合に5433を使用)
@@ -37,7 +37,7 @@ docker-compose up -d
   - Email: `admin@example.com`
   - Password: `admin`
 
-> **Note**: デフォルトのPostgreSQLポート（5432）が既に使用されている場合、docker-compose.ymlで5433ポートを使用しています。
+> **Note**: デフォルトのPostgreSQLポート（5432）が既に使用されている場合、compose.yamlで5433ポートを使用しています。
 
 ### 2. 初回セットアップ（マイグレーション & コード生成）
 
@@ -156,7 +156,7 @@ docker ps | grep simple-ec-postgres
 ```
 
 **ポート競合の場合**:
-- `docker-compose.yml`でポート番号を変更
+- `compose.yaml`でポート番号を変更
 - `application.yaml`と`build.gradle.kts`のJDBC URLも同様に変更
 
 ## 📝 TODO
