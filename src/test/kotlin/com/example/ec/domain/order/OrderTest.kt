@@ -19,7 +19,8 @@ class OrderTest : FunSpec({
                 customerId = ID<Customer>(100L),
                 orderDate = now,
                 totalAmount = Price.of("12345.67"),
-                createdAt = now
+                createdAt = now,
+                items = emptyList()
             )
 
             order shouldBe Order(
@@ -27,7 +28,8 @@ class OrderTest : FunSpec({
                 customerId = ID(100L),
                 orderDate = now,
                 totalAmount = Price.of("12345.67"),
-                createdAt = now
+                createdAt = now,
+                items = emptyList()
             )
         }
 
@@ -38,7 +40,8 @@ class OrderTest : FunSpec({
                     customerId = ID(100L),
                     orderDate = LocalDateTime.now(),
                     totalAmount = Price.of("-100"),
-                    createdAt = LocalDateTime.now()
+                    createdAt = LocalDateTime.now(),
+                    items = emptyList()
                 )
             }
             exception.message shouldContain "Price must be non-negative"
@@ -50,7 +53,8 @@ class OrderTest : FunSpec({
                 customerId = ID(100L),
                 orderDate = LocalDateTime.now(),
                 totalAmount = Price.ZERO,
-                createdAt = LocalDateTime.now()
+                createdAt = LocalDateTime.now(),
+                items = emptyList()
             )
 
             order.totalAmount shouldBe Price.ZERO
@@ -61,9 +65,9 @@ class OrderTest : FunSpec({
         test("複数の注文明細から合計金額が計算される") {
             val now = LocalDateTime.now()
             val items = listOf(
-                OrderItem(ID(1L), ID(100L), "商品A", 2, Price.of("1000"), now),
-                OrderItem(ID(2L), ID(100L), "商品B", 3, Price.of("1500"), now),
-                OrderItem(ID(3L), ID(100L), "商品C", 1, Price.of("500"), now)
+                OrderItem(ID(1L), "商品A", 2, Price.of("1000"), now),
+                OrderItem(ID(2L), "商品B", 3, Price.of("1500"), now),
+                OrderItem(ID(3L), "商品C", 1, Price.of("500"), now)
             )
 
             val total = Order.calculateTotalAmount(items)
@@ -81,7 +85,7 @@ class OrderTest : FunSpec({
         test("単一の注文明細から合計金額が計算される") {
             val now = LocalDateTime.now()
             val items = listOf(
-                OrderItem(ID(1L), ID(100L), "商品A", 5, Price.of("1234.56"), now)
+                OrderItem(ID(1L), "商品A", 5, Price.of("1234.56"), now)
             )
 
             val total = Order.calculateTotalAmount(items)
@@ -92,8 +96,8 @@ class OrderTest : FunSpec({
         test("小数点を含む単価でも正しく計算される") {
             val now = LocalDateTime.now()
             val items = listOf(
-                OrderItem(ID(1L), ID(100L), "商品A", 3, Price.of("999.99"), now),
-                OrderItem(ID(2L), ID(100L), "商品B", 2, Price.of("1500.50"), now)
+                OrderItem(ID(1L), "商品A", 3, Price.of("999.99"), now),
+                OrderItem(ID(2L), "商品B", 2, Price.of("1500.50"), now)
             )
 
             val total = Order.calculateTotalAmount(items)

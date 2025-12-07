@@ -15,7 +15,6 @@ class OrderItemTest : FunSpec({
             val now = LocalDateTime.now()
             val item = OrderItem(
                 id = ID(1L),
-                orderId = ID(100L),
                 productName = "サンプル商品",
                 quantity = 2,
                 unitPrice = Price.of("1000.00"),
@@ -24,7 +23,6 @@ class OrderItemTest : FunSpec({
 
             item shouldBe OrderItem(
                 id = ID(1L),
-                orderId = ID(100L),
                 productName = "サンプル商品",
                 quantity = 2,
                 unitPrice = Price.of("1000.00"),
@@ -36,7 +34,6 @@ class OrderItemTest : FunSpec({
             val exception = shouldThrow<IllegalArgumentException> {
                 OrderItem(
                     id = ID(1L),
-                    orderId = ID(100L),
                     productName = "",
                     quantity = 1,
                     unitPrice = Price.of("1000"),
@@ -50,7 +47,6 @@ class OrderItemTest : FunSpec({
             val exception = shouldThrow<IllegalArgumentException> {
                 OrderItem(
                     id = ID(1L),
-                    orderId = ID(100L),
                     productName = "商品A",
                     quantity = 0,
                     unitPrice = Price.of("1000"),
@@ -64,7 +60,6 @@ class OrderItemTest : FunSpec({
             val exception = shouldThrow<IllegalArgumentException> {
                 OrderItem(
                     id = ID(1L),
-                    orderId = ID(100L),
                     productName = "商品A",
                     quantity = -1,
                     unitPrice = Price.of("1000"),
@@ -78,7 +73,6 @@ class OrderItemTest : FunSpec({
             val exception = shouldThrow<IllegalArgumentException> {
                 OrderItem(
                     id = ID(1L),
-                    orderId = ID(100L),
                     productName = "商品A",
                     quantity = 1,
                     unitPrice = Price.of("-100"),
@@ -93,7 +87,6 @@ class OrderItemTest : FunSpec({
         test("正しく小計金額が計算される") {
             val item = OrderItem(
                 id = ID(1L),
-                orderId = ID(100L),
                 productName = "商品A",
                 quantity = 3,
                 unitPrice = Price.of("1500.50"),
@@ -106,7 +99,6 @@ class OrderItemTest : FunSpec({
         test("quantity=1の場合、小計はunitPriceと同じ") {
             val item = OrderItem(
                 id = ID(1L),
-                orderId = ID(100L),
                 productName = "商品A",
                 quantity = 1,
                 unitPrice = Price.of("999.99"),
@@ -119,7 +111,6 @@ class OrderItemTest : FunSpec({
         test("unitPrice=0の場合、小計も0") {
             val item = OrderItem(
                 id = ID(1L),
-                orderId = ID(100L),
                 productName = "無料サンプル",
                 quantity = 5,
                 unitPrice = Price.ZERO,

@@ -26,20 +26,17 @@ class GetOrderDetailUseCase(
      * @throws IllegalStateException 顧客が存在しない場合（データ整合性エラー）
      */
     fun execute(orderId: ID<Order>): OrderDetail? {
-        // 注文を取得
+        // 注文明細込みで注文を取得
         val order = orderRepository.findById(orderId) ?: return null
 
         // 顧客を取得（存在しない場合はデータ整合性エラー）
         val customer = customerRepository.findById(order.customerId)
             ?: error("Customer not found for order ${order.id.value}. Data integrity error.")
 
-        // 注文明細を取得
-        val items = orderRepository.findItemsByOrderId(orderId)
-
         return OrderDetail(
             order = order,
             customer = customer,
-            items = items
+            items = order.items
         )
     }
 }
