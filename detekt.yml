@@ -26,14 +26,9 @@ complexity:
   LargeClass:
     active: true
     threshold: 600
-  ComplexMethod:
+  CyclomaticComplexMethod:
     active: true
     threshold: 15
-
-formatting:
-  active: true
-  android: false
-  autoCorrect: true
 
 naming:
   active: true
@@ -46,6 +41,11 @@ naming:
 
 potential-bugs:
   active: true
+
+performance:
+  active: true
+  SpreadOperator:
+    active: false
 
 style:
   active: true

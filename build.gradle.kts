@@ -10,12 +10,12 @@ buildscript {
 }
 
 plugins {
-	kotlin("jvm") version "1.9.25"
-	kotlin("plugin.spring") version "1.9.25"
+	kotlin("jvm") version "2.0.21"
+	kotlin("plugin.spring") version "2.0.21"
 	id("org.springframework.boot") version "3.5.9-SNAPSHOT"
 	id("io.spring.dependency-management") version "1.1.7"
 	id("nu.studer.jooq") version "8.2"
-	id("io.gitlab.arturbosch.detekt") version "1.23.4"
+	id("io.gitlab.arturbosch.detekt") version "1.23.8"
 	id("org.openapi.generator") version "7.10.0"
 	id("org.flywaydb.flyway") version "10.21.0"
 }
@@ -112,7 +112,7 @@ jooq {
 						isKotlinNotNullInterfaceAttributes = true
 					}
 					target.apply {
-						packageName = "com.example.simple_ec_backend.infrastructure.jooq"
+						packageName = "com.example.ec.infrastructure.jooq"
 						directory = "build/generated-src/jooq/main"
 					}
 					strategy.name = "org.jooq.codegen.DefaultGeneratorStrategy"
@@ -146,8 +146,8 @@ openApiGenerate {
 	generatorName.set("kotlin-spring")
 	inputSpec.set("$rootDir/src/main/resources/openapi/api.yaml")
 	outputDir.set("$buildDir/generated/openapi")
-	apiPackage.set("com.example.simple_ec_backend.presentation.api")
-	modelPackage.set("com.example.simple_ec_backend.presentation.model")
+	apiPackage.set("com.example.ec.presentation.api")
+	modelPackage.set("com.example.ec.presentation.model")
 	configOptions.set(mapOf(
 		"interfaceOnly" to "true",
 		"useSpringBoot3" to "true",

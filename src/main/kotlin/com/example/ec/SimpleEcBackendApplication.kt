@@ -1,4 +1,4 @@
-package com.example.simple_ec_backend
+package com.example.ec
 
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.runApplication
