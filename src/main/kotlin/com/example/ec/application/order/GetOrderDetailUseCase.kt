@@ -31,7 +31,7 @@ class GetOrderDetailUseCase(
 
         // 顧客を取得（存在しない場合はデータ整合性エラー）
         val customer = customerRepository.findById(order.customerId)
-            ?: throw IllegalStateException("Customer not found for order ${order.id.value}. Data integrity error.")
+            ?: error("Customer not found for order ${order.id.value}. Data integrity error.")
 
         // 注文明細を取得
         val items = orderRepository.findItemsByOrderId(orderId)
