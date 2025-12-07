@@ -121,16 +121,16 @@ curl -X DELETE "http://localhost:8080/admin/truncate"
 
 ```bash
 # Kotlin Sequence 版
-curl "http://localhost:8080/api/v1/export/orders?strategy=sequence" > orders_sequence.csv
+curl "http://localhost:8080/api/export/orders?strategy=sequence" > orders_sequence.csv
 
 # Java Stream (flatMap) 版
-curl "http://localhost:8080/api/v1/export/orders?strategy=stream-flatmap" > orders_flatmap.csv
+curl "http://localhost:8080/api/export/orders?strategy=stream-flatmap" > orders_flatmap.csv
 
 # Java Stream (mapMulti) 版
-curl "http://localhost:8080/api/v1/export/orders?strategy=stream-mapmulti" > orders_mapmulti.csv
+curl "http://localhost:8080/api/export/orders?strategy=stream-mapmulti" > orders_mapmulti.csv
 
 # カスタム Spliterator 版
-curl "http://localhost:8080/api/v1/export/orders?strategy=spliterator" > orders_spliterator.csv
+curl "http://localhost:8080/api/export/orders?strategy=spliterator" > orders_spliterator.csv
 ```
 
 ## プロジェクト構成
