@@ -2,24 +2,33 @@ package com.example.ec.presentation.controller
 
 import com.example.ec.application.order.GetOrderDetailUseCase
 import com.example.ec.application.order.OrderDetail
-import com.example.ec.domain.order.Order
 import com.example.ec.domain.order.OrderItem
 import com.example.ec.domain.shared.ID
-import com.example.ec.presentation.api.OrdersApi
 import com.example.ec.presentation.model.CustomerSummary
 import com.example.ec.presentation.model.OrderDetailResponse
 import com.example.ec.presentation.model.OrderItemSummary
 import org.springframework.http.ResponseEntity
+import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PathVariable
+import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
-import java.time.OffsetDateTime
 import java.time.ZoneOffset
 
+/**
+ * 注文詳細取得コントローラ
+ *
+ * OpenAPI生成のOrdersApiインターフェースは仕様参照のみに使用し、
+ * Spring MVCのルーティングは自前で定義することで、
+ * APIごとにControllerを分割できる設計としている。
+ */
 @RestController
-class OrdersApiController(
+@RequestMapping("/api/orders")
+class OrderDetailController(
     private val getOrderDetailUseCase: GetOrderDetailUseCase
-) : OrdersApi {
+) {
 
-    override fun getOrderDetail(orderId: Long): ResponseEntity<OrderDetailResponse> {
+    @GetMapping("/{orderId}")
+    fun getOrderDetail(@PathVariable orderId: Long): ResponseEntity<OrderDetailResponse> {
         val orderDetail = getOrderDetailUseCase.execute(ID(orderId))
             ?: return ResponseEntity.notFound().build()
 
