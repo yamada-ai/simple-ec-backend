@@ -317,6 +317,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/OrderItemResponse'
 
+  # TODO(#8): OrderItemを単独リソース化しているのは集約境界違反
+  # このエンドポイント全体を削除し、/api/orders/{orderId} で対応すべき
   /api/v1/order-items/{itemId}:
     get:
       tags:
@@ -440,7 +442,7 @@ components:
           type: integer
           format: int64
         customer:
-          $ref: '#/components/schemas/CustomerInfo'
+          $ref: '#/components/schemas/CustomerSummary'
         orderDate:
           type: string
           format: date-time
@@ -450,12 +452,12 @@ components:
         items:
           type: array
           items:
-            $ref: '#/components/schemas/OrderItemInfo'
+            $ref: '#/components/schemas/OrderItemSummary'
         createdAt:
           type: string
           format: date-time
 
-    CustomerInfo:
+    CustomerSummary:
       type: object
       required:
         - id
@@ -470,7 +472,7 @@ components:
         email:
           type: string
 
-    OrderItemInfo:
+    OrderItemSummary:
       type: object
       required:
         - id
@@ -575,6 +577,8 @@ components:
           format: decimal
           minimum: 0
 
+    # TODO(#8): OrderItemを単独リソースとして扱うのは集約境界を破っている
+    # /api/v1/order-items/{itemId} エンドポイントとともに見直しが必要
     OrderItemResponse:
       type: object
       properties:

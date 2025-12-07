@@ -6,9 +6,9 @@ import com.example.ec.domain.order.Order
 import com.example.ec.domain.order.OrderItem
 import com.example.ec.domain.shared.ID
 import com.example.ec.presentation.api.OrdersApi
-import com.example.ec.presentation.model.CustomerInfo
+import com.example.ec.presentation.model.CustomerSummary
 import com.example.ec.presentation.model.OrderDetailResponse
-import com.example.ec.presentation.model.OrderItemInfo
+import com.example.ec.presentation.model.OrderItemSummary
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.RestController
 import java.time.OffsetDateTime
@@ -34,7 +34,7 @@ class OrdersApiController(
 private fun OrderDetail.toResponse(): OrderDetailResponse {
     return OrderDetailResponse(
         id = order.id.value,
-        customer = CustomerInfo(
+        customer = CustomerSummary(
             id = customer.id.value,
             name = customer.name,
             email = customer.email.value
@@ -47,10 +47,10 @@ private fun OrderDetail.toResponse(): OrderDetailResponse {
 }
 
 /**
- * OrderItem を OrderItemInfo に変換する
+ * OrderItem を OrderItemSummary に変換する
  */
-private fun OrderItem.toResponse(): OrderItemInfo {
-    return OrderItemInfo(
+private fun OrderItem.toResponse(): OrderItemSummary {
+    return OrderItemSummary(
         id = id.value,
         productName = productName,
         quantity = quantity,
