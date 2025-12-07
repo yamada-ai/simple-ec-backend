@@ -1,7 +1,7 @@
 package com.example.ec.domain.order
 
 import com.example.ec.domain.shared.ID
-import java.math.BigDecimal
+import com.example.ec.domain.shared.Price
 import java.time.LocalDateTime
 
 /**
@@ -19,17 +19,16 @@ data class OrderItem(
     val orderId: ID<Order>,
     val productName: String,
     val quantity: Int,
-    val unitPrice: BigDecimal,
+    val unitPrice: Price,
     val createdAt: LocalDateTime
 ) {
     init {
         require(productName.isNotBlank()) { "Product name must not be blank" }
         require(quantity > 0) { "Quantity must be greater than 0" }
-        require(unitPrice >= BigDecimal.ZERO) { "Unit price must be non-negative" }
     }
 
     /**
      * 小計金額を計算する
      */
-    fun subtotal(): BigDecimal = unitPrice.multiply(BigDecimal(quantity))
+    fun subtotal(): Price = unitPrice * quantity
 }

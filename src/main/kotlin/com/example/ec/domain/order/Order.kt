@@ -2,7 +2,7 @@ package com.example.ec.domain.order
 
 import com.example.ec.domain.customer.Customer
 import com.example.ec.domain.shared.ID
-import java.math.BigDecimal
+import com.example.ec.domain.shared.Price
 import java.time.LocalDateTime
 
 /**
@@ -18,18 +18,14 @@ data class Order(
     val id: ID<Order>,
     val customerId: ID<Customer>,
     val orderDate: LocalDateTime,
-    val totalAmount: BigDecimal,
+    val totalAmount: Price,
     val createdAt: LocalDateTime
 ) {
-    init {
-        require(totalAmount >= BigDecimal.ZERO) { "Total amount must be non-negative" }
-    }
-
     /**
      * 注文明細リストから合計金額を計算する
      */
     companion object {
-        fun calculateTotalAmount(items: List<OrderItem>): BigDecimal =
-            items.fold(BigDecimal.ZERO) { acc, item -> acc + item.subtotal() }
+        fun calculateTotalAmount(items: List<OrderItem>): Price =
+            items.fold(Price.ZERO) { acc, item -> acc + item.subtotal() }
     }
 }

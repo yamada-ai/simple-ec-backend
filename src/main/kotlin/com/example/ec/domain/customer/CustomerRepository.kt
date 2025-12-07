@@ -1,5 +1,6 @@
 package com.example.ec.domain.customer
 
+import com.example.ec.domain.shared.Email
 import com.example.ec.domain.shared.ID
 
 /**
@@ -20,7 +21,7 @@ interface CustomerRepository {
      * @param email メールアドレス
      * @return 顧客エンティティ、存在しない場合はnull
      */
-    fun findByEmail(email: String): Customer?
+    fun findByEmail(email: Email): Customer?
 
     /**
      * 全件数を取得する

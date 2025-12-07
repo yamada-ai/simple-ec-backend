@@ -1,5 +1,6 @@
 package com.example.ec.domain.customer
 
+import com.example.ec.domain.shared.Email
 import com.example.ec.domain.shared.ID
 import java.time.LocalDateTime
 
@@ -14,12 +15,10 @@ import java.time.LocalDateTime
 data class Customer(
     val id: ID<Customer>,
     val name: String,
-    val email: String,
+    val email: Email,
     val createdAt: LocalDateTime
 ) {
     init {
         require(name.isNotBlank()) { "Customer name must not be blank" }
-        require(email.isNotBlank()) { "Customer email must not be blank" }
-        require(email.contains("@")) { "Customer email must be valid" }
     }
 }

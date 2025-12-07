@@ -25,7 +25,7 @@ data class Page<T>(
      * 総ページ数を計算する
      */
     val totalPages: Int
-        get() = if (size == 0) 0 else ((totalElements + size - 1) / size).toInt()
+        get() = if (totalElements == 0L) 0 else ((totalElements - 1) / size + 1).toInt()
 
     /**
      * 現在のページが最初のページかどうか

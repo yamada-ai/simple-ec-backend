@@ -1,11 +1,11 @@
 package com.example.ec.domain.order
 
 import com.example.ec.domain.shared.ID
+import com.example.ec.domain.shared.Price
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
-import java.math.BigDecimal
 import java.time.LocalDateTime
 
 class OrderItemTest : FunSpec({
@@ -18,7 +18,7 @@ class OrderItemTest : FunSpec({
                 orderId = ID(100L),
                 productName = "サンプル商品",
                 quantity = 2,
-                unitPrice = BigDecimal("1000.00"),
+                unitPrice = Price.of("1000.00"),
                 createdAt = now
             )
 
@@ -27,7 +27,7 @@ class OrderItemTest : FunSpec({
                 orderId = ID(100L),
                 productName = "サンプル商品",
                 quantity = 2,
-                unitPrice = BigDecimal("1000.00"),
+                unitPrice = Price.of("1000.00"),
                 createdAt = now
             )
         }
@@ -39,7 +39,7 @@ class OrderItemTest : FunSpec({
                     orderId = ID(100L),
                     productName = "",
                     quantity = 1,
-                    unitPrice = BigDecimal("1000"),
+                    unitPrice = Price.of("1000"),
                     createdAt = LocalDateTime.now()
                 )
             }
@@ -53,7 +53,7 @@ class OrderItemTest : FunSpec({
                     orderId = ID(100L),
                     productName = "商品A",
                     quantity = 0,
-                    unitPrice = BigDecimal("1000"),
+                    unitPrice = Price.of("1000"),
                     createdAt = LocalDateTime.now()
                 )
             }
@@ -67,7 +67,7 @@ class OrderItemTest : FunSpec({
                     orderId = ID(100L),
                     productName = "商品A",
                     quantity = -1,
-                    unitPrice = BigDecimal("1000"),
+                    unitPrice = Price.of("1000"),
                     createdAt = LocalDateTime.now()
                 )
             }
@@ -81,11 +81,11 @@ class OrderItemTest : FunSpec({
                     orderId = ID(100L),
                     productName = "商品A",
                     quantity = 1,
-                    unitPrice = BigDecimal("-100"),
+                    unitPrice = Price.of("-100"),
                     createdAt = LocalDateTime.now()
                 )
             }
-            exception.message shouldContain "Unit price must be non-negative"
+            exception.message shouldContain "Price must be non-negative"
         }
     }
 
@@ -96,11 +96,11 @@ class OrderItemTest : FunSpec({
                 orderId = ID(100L),
                 productName = "商品A",
                 quantity = 3,
-                unitPrice = BigDecimal("1500.50"),
+                unitPrice = Price.of("1500.50"),
                 createdAt = LocalDateTime.now()
             )
 
-            item.subtotal() shouldBe BigDecimal("4501.50")
+            item.subtotal() shouldBe Price.of("4501.50")
         }
 
         test("quantity=1の場合、小計はunitPriceと同じ") {
@@ -109,11 +109,11 @@ class OrderItemTest : FunSpec({
                 orderId = ID(100L),
                 productName = "商品A",
                 quantity = 1,
-                unitPrice = BigDecimal("999.99"),
+                unitPrice = Price.of("999.99"),
                 createdAt = LocalDateTime.now()
             )
 
-            item.subtotal() shouldBe BigDecimal("999.99")
+            item.subtotal() shouldBe Price.of("999.99")
         }
 
         test("unitPrice=0の場合、小計も0") {
@@ -122,11 +122,11 @@ class OrderItemTest : FunSpec({
                 orderId = ID(100L),
                 productName = "無料サンプル",
                 quantity = 5,
-                unitPrice = BigDecimal.ZERO,
+                unitPrice = Price.ZERO,
                 createdAt = LocalDateTime.now()
             )
 
-            item.subtotal() shouldBe BigDecimal.ZERO
+            item.subtotal() shouldBe Price.ZERO
         }
     }
 })
