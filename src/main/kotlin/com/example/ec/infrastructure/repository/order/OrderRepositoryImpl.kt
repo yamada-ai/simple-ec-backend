@@ -7,6 +7,8 @@ import com.example.ec.domain.order.OrderRepository
 import com.example.ec.domain.shared.ID
 import com.example.ec.domain.shared.Page
 import com.example.ec.domain.shared.Price
+import com.example.ec.infrastructure.jooq.tables.records.OrderItemRecord
+import com.example.ec.infrastructure.jooq.tables.records.OrderRecord
 import com.example.ec.infrastructure.jooq.tables.references.ORDER
 import com.example.ec.infrastructure.jooq.tables.references.ORDER_ITEM
 import org.jooq.DSLContext
@@ -22,15 +24,7 @@ class OrderRepositoryImpl(
         return dsl.selectFrom(ORDER)
             .where(ORDER.ID.eq(id.value))
             .fetchOne()
-            ?.let { record ->
-                Order(
-                    id = ID(record.id!!),
-                    customerId = ID(record.customerId!!),
-                    orderDate = record.orderDate!!,
-                    totalAmount = Price(record.totalAmount!!),
-                    createdAt = record.createdAt!!
-                )
-            }
+            ?.let { convertToOrder(it) }
     }
 
     override fun search(
@@ -48,21 +42,33 @@ class OrderRepositoryImpl(
         return dsl.selectFrom(ORDER_ITEM)
             .where(ORDER_ITEM.ORDER_ID.eq(orderId.value))
             .fetch()
-            .map { record ->
-                OrderItem(
-                    id = ID(record.id!!),
-                    orderId = ID(record.orderId!!),
-                    productName = record.productName!!,
-                    quantity = record.quantity!!,
-                    unitPrice = Price(record.unitPrice!!),
-                    createdAt = record.createdAt!!
-                )
-            }
+            .map { convertToOrderItem(it) }
     }
 
     override fun count(): Long {
         return dsl.selectCount()
             .from(ORDER)
             .fetchOne(0, Long::class.java) ?: 0L
+    }
+
+    private fun convertToOrder(record: OrderRecord): Order {
+        return Order(
+            id = ID(record.id!!),
+            customerId = ID(record.customerId!!),
+            orderDate = record.orderDate!!,
+            totalAmount = Price(record.totalAmount!!),
+            createdAt = record.createdAt!!
+        )
+    }
+
+    private fun convertToOrderItem(record: OrderItemRecord): OrderItem {
+        return OrderItem(
+            id = ID(record.id!!),
+            orderId = ID(record.orderId!!),
+            productName = record.productName!!,
+            quantity = record.quantity!!,
+            unitPrice = Price(record.unitPrice!!),
+            createdAt = record.createdAt!!
+        )
     }
 }
