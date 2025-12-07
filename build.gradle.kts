@@ -73,6 +73,11 @@ dependencies {
 	testImplementation("io.mockk:mockk:1.13.12")
 	testImplementation("com.ninja-squad:springmockk:4.0.2")
 
+	// TestContainers
+	testImplementation("org.testcontainers:testcontainers:1.20.4")
+	testImplementation("org.testcontainers:postgresql:1.20.4")
+	testImplementation("org.testcontainers:junit-jupiter:1.20.4")
+
     implementation(kotlin("stdlib-jdk8"))
 }
 
