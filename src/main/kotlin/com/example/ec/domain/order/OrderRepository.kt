@@ -12,7 +12,7 @@ interface OrderRepository {
      * 注文IDで注文を取得する
      *
      * @param id 注文ID
-     * @return 注文エンティティ、存在しない場合はnull
+     * @return 注文エンティティ（明細を含む）、存在しない場合はnull
      */
     fun findById(id: ID<Order>): Order?
 
@@ -33,14 +33,6 @@ interface OrderRepository {
         page: Int,
         size: Int
     ): Page<Order>
-
-    /**
-     * 注文明細を含む注文を取得する
-     *
-     * @param orderId 注文ID
-     * @return 注文明細のリスト、注文が存在しない場合は空リスト
-     */
-    fun findItemsByOrderId(orderId: ID<Order>): List<OrderItem>
 
     /**
      * 全件数を取得する

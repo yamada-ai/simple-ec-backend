@@ -21,10 +21,13 @@ class OrderRepositoryImpl(
 ) : OrderRepository {
 
     override fun findById(id: ID<Order>): Order? {
-        return dsl.selectFrom(ORDER)
+        val orderRecord = dsl.selectFrom(ORDER)
             .where(ORDER.ID.eq(id.value))
             .fetchOne()
-            ?.let { convertToOrder(it) }
+            ?: return null
+
+        val items = fetchItems(orderRecord.id!!)
+        return convertToOrder(orderRecord, items)
     }
 
     override fun search(
@@ -38,33 +41,33 @@ class OrderRepositoryImpl(
         TODO("Not yet implemented - will be implemented in Phase 3")
     }
 
-    override fun findItemsByOrderId(orderId: ID<Order>): List<OrderItem> {
-        return dsl.selectFrom(ORDER_ITEM)
-            .where(ORDER_ITEM.ORDER_ID.eq(orderId.value))
-            .fetch()
-            .map { convertToOrderItem(it) }
-    }
-
     override fun count(): Long {
         return dsl.selectCount()
             .from(ORDER)
             .fetchOne(0, Long::class.java) ?: 0L
     }
 
-    private fun convertToOrder(record: OrderRecord): Order {
+    private fun fetchItems(orderId: Long): List<OrderItem> {
+        return dsl.selectFrom(ORDER_ITEM)
+            .where(ORDER_ITEM.ORDER_ID.eq(orderId))
+            .fetch()
+            .map { convertToOrderItem(it) }
+    }
+
+    private fun convertToOrder(record: OrderRecord, items: List<OrderItem>): Order {
         return Order(
             id = ID(record.id!!),
             customerId = ID(record.customerId!!),
             orderDate = record.orderDate!!,
             totalAmount = Price(record.totalAmount!!),
-            createdAt = record.createdAt!!
+            createdAt = record.createdAt!!,
+            items = items
         )
     }
 
     private fun convertToOrderItem(record: OrderItemRecord): OrderItem {
         return OrderItem(
             id = ID(record.id!!),
-            orderId = ID(record.orderId!!),
             productName = record.productName!!,
             quantity = record.quantity!!,
             unitPrice = Price(record.unitPrice!!),
