@@ -1,3 +1,5 @@
+SET search_path TO test;
+
 -- Insert test customer
 INSERT INTO customer (id, name, email, created_at) VALUES
     (1, 'Test Customer', 'test@example.com', '2024-01-01 10:00:00');

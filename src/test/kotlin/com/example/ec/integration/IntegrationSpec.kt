@@ -2,8 +2,10 @@ package com.example.ec.integration
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.extensions.spring.SpringExtension
+import com.example.ec.integration.config.JooqTestConfig
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
+import org.springframework.test.context.ContextConfiguration
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
@@ -16,6 +18,7 @@ import org.testcontainers.utility.DockerImageName
  * - Flyway/DB接続のプロパティを動的注入（テスト用スキーマ: test）
  */
 @Testcontainers(disabledWithoutDocker = true)
+@ContextConfiguration(classes = [JooqTestConfig::class])
 abstract class IntegrationSpec(body: FunSpec.() -> Unit = {}) : FunSpec(body) {
 
     override fun extensions() = listOf(SpringExtension)
@@ -40,12 +43,22 @@ abstract class IntegrationSpec(body: FunSpec.() -> Unit = {}) : FunSpec(body) {
         fun registerProperties(registry: DynamicPropertyRegistry) {
             // DynamicPropertySource が呼ばれる時点で必ず起動させ、ポートを確保する
             postgres.start()
-            registry.add("spring.datasource.url", postgres::getJdbcUrl)
+            val baseUrl = postgres.jdbcUrl
+            val schemaParam = if (baseUrl.contains("?")) "&" else "?"
+            val urlWithSchema = baseUrl + schemaParam + "currentSchema=test"
+
+            registry.add("spring.datasource.url") { urlWithSchema }
             registry.add("spring.datasource.username", postgres::getUsername)
             registry.add("spring.datasource.password", postgres::getPassword)
-            registry.add("spring.flyway.url", postgres::getJdbcUrl)
+            registry.add("spring.datasource.hikari.schema") { "test" }
+            registry.add("spring.jpa.properties.hibernate.default_schema") { "test" }
+
+            registry.add("spring.flyway.url") { urlWithSchema }
             registry.add("spring.flyway.user", postgres::getUsername)
             registry.add("spring.flyway.password", postgres::getPassword)
+            registry.add("spring.flyway.schemas") { arrayOf("test") }
+            registry.add("spring.flyway.default-schema") { "test" }
+            registry.add("spring.flyway.create-schemas") { true }
         }
     }
 }
