@@ -1,5 +1,6 @@
 package com.example.ec.infrastructure.repository.order
 
+import com.example.ec.application.order.OrderListItemView
 import com.example.ec.domain.customer.Customer
 import com.example.ec.domain.order.Order
 import com.example.ec.domain.order.OrderItem
@@ -9,9 +10,12 @@ import com.example.ec.domain.shared.Page
 import com.example.ec.domain.shared.Price
 import com.example.ec.infrastructure.jooq.tables.records.OrderItemRecord
 import com.example.ec.infrastructure.jooq.tables.records.OrderRecord
+import com.example.ec.infrastructure.jooq.tables.references.CUSTOMER
 import com.example.ec.infrastructure.jooq.tables.references.ORDER
 import com.example.ec.infrastructure.jooq.tables.references.ORDER_ITEM
+import org.jooq.Condition
 import org.jooq.DSLContext
+import org.jooq.impl.DSL
 import org.springframework.stereotype.Repository
 import java.time.LocalDateTime
 
@@ -37,14 +41,137 @@ class OrderRepositoryImpl(
         page: Int,
         size: Int
     ): Page<Order> {
-        // Phase 3 で実装予定
-        TODO("Not yet implemented - will be implemented in Phase 3")
+        val whereCondition = buildSearchCondition(from, to, customerName)
+
+        // 総件数を取得
+        val totalElements = dsl.selectCount()
+            .from(ORDER)
+            .join(CUSTOMER).on(ORDER.CUSTOMER_ID.eq(CUSTOMER.ID))
+            .where(whereCondition)
+            .fetchOne(0, Long::class.java) ?: 0L
+
+        // データ取得
+        val orderRecords = dsl.select(ORDER.fields().toList())
+            .from(ORDER)
+            .join(CUSTOMER).on(ORDER.CUSTOMER_ID.eq(CUSTOMER.ID))
+            .where(whereCondition)
+            .orderBy(ORDER.ORDER_DATE.desc(), ORDER.ID.desc())
+            .limit(size)
+            .offset(page * size)
+            .fetch()
+            .into(ORDER)
+
+        // 全てのOrderItemsを一度に取得してグルーピング（N+1問題を回避）
+        val orderIds = orderRecords.map { it.id!! }
+        val itemsByOrderId = if (orderIds.isNotEmpty()) {
+            dsl.selectFrom(ORDER_ITEM)
+                .where(ORDER_ITEM.ORDER_ID.`in`(orderIds))
+                .fetch()
+                .groupBy { it.orderId!! }
+                .mapValues { (_, records) -> records.map { convertToOrderItem(it) } }
+        } else {
+            emptyMap()
+        }
+
+        // OrderエンティティにItemsを含めて変換
+        val orders = orderRecords.map { record ->
+            val items = itemsByOrderId[record.id!!] ?: emptyList()
+            convertToOrder(record, items)
+        }
+
+        return Page(
+            content = orders,
+            page = page,
+            size = size,
+            totalElements = totalElements
+        )
+    }
+
+    override fun searchForList(
+        from: LocalDateTime?,
+        to: LocalDateTime?,
+        customerName: String?,
+        page: Int,
+        size: Int
+    ): Page<OrderListItemView> {
+        val whereCondition = buildSearchCondition(from, to, customerName)
+
+        // 総件数を取得
+        val totalElements = dsl.selectCount()
+            .from(ORDER)
+            .join(CUSTOMER).on(ORDER.CUSTOMER_ID.eq(CUSTOMER.ID))
+            .where(whereCondition)
+            .fetchOne(0, Long::class.java) ?: 0L
+
+        // データ取得（顧客名とアイテム数を含む）
+        val itemCountSubquery = DSL.select(DSL.count())
+            .from(ORDER_ITEM)
+            .where(ORDER_ITEM.ORDER_ID.eq(ORDER.ID))
+            .asField<Int>("item_count")
+
+        val results = dsl.select(
+            ORDER.ID,
+            CUSTOMER.NAME,
+            ORDER.ORDER_DATE,
+            ORDER.TOTAL_AMOUNT,
+            itemCountSubquery
+        )
+            .from(ORDER)
+            .join(CUSTOMER).on(ORDER.CUSTOMER_ID.eq(CUSTOMER.ID))
+            .where(whereCondition)
+            .orderBy(ORDER.ORDER_DATE.desc(), ORDER.ID.desc())
+            .limit(size)
+            .offset(page * size)
+            .fetch()
+
+        val orderListItems = results.map { record ->
+            OrderListItemView(
+                id = record.get(ORDER.ID)!!,
+                customerName = record.get(CUSTOMER.NAME) ?: "Unknown",
+                orderDate = record.get(ORDER.ORDER_DATE)!!,
+                totalAmount = record.get(ORDER.TOTAL_AMOUNT)!!,
+                itemCount = record.get(itemCountSubquery) ?: 0
+            )
+        }
+
+        return Page(
+            content = orderListItems,
+            page = page,
+            size = size,
+            totalElements = totalElements
+        )
     }
 
     override fun count(): Long {
         return dsl.selectCount()
             .from(ORDER)
             .fetchOne(0, Long::class.java) ?: 0L
+    }
+
+    private fun buildSearchCondition(
+        from: LocalDateTime?,
+        to: LocalDateTime?,
+        customerName: String?
+    ): Condition {
+        val conditions = mutableListOf<Condition>()
+
+        from?.let {
+            conditions.add(ORDER.ORDER_DATE.greaterOrEqual(it))
+        }
+
+        to?.let {
+            conditions.add(ORDER.ORDER_DATE.lessOrEqual(it))
+        }
+
+        customerName?.let {
+            conditions.add(CUSTOMER.NAME.containsIgnoreCase(it))
+        }
+
+        return if (conditions.isEmpty()) {
+            DSL.noCondition()
+        } else {
+            DSL.and(conditions)
+        }
     }
 
     private fun fetchItems(orderId: Long): List<OrderItem> {
