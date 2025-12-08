@@ -29,4 +29,17 @@ interface CustomerRepository {
      * @return 顧客の総数
      */
     fun count(): Long
+
+    /**
+     * 全顧客を削除する（開発/テスト用）
+     */
+    fun truncate()
+
+    /**
+     * 複数の顧客を一括保存する
+     *
+     * @param customers 保存する顧客のリスト
+     * @return 保存された顧客のリスト（IDが割り当てられている）
+     */
+    fun saveAll(customers: List<Customer>): List<Customer>
 }

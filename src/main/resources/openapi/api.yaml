@@ -16,6 +16,8 @@ tags:
     description: Order management
   - name: export
     description: CSV export endpoints
+  - name: admin
+    description: Admin endpoints for data management (development/testing only)
 
 paths:
   /api/orders/{orderId}:
@@ -303,6 +305,69 @@ paths:
                 type: string
                 format: binary
 
+  # Admin endpoints
+  /admin/summary:
+    get:
+      tags:
+        - admin
+      summary: Get data summary
+      description: Get count of customers, orders, and order items for development/testing
+      operationId: getAdminSummary
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminSummaryResponse'
+
+  /admin/seed:
+    post:
+      tags:
+        - admin
+      summary: Seed test data
+      description: Generate random test data for development/testing
+      operationId: seedData
+      parameters:
+        - name: customers
+          in: query
+          description: Number of customers to generate
+          schema:
+            type: integer
+            default: 100
+            minimum: 1
+            maximum: 10000
+        - name: orders
+          in: query
+          description: Number of orders to generate
+          schema:
+            type: integer
+            default: 1000
+            minimum: 1
+            maximum: 100000
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SeedDataResponse'
+
+  /admin/truncate:
+    delete:
+      tags:
+        - admin
+      summary: Truncate all data
+      description: Delete all customers, orders, and order items (does not delete order attributes)
+      operationId: truncateData
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TruncateDataResponse'
+
 components:
   schemas:
     # Order Detail API schemas
@@ -507,3 +572,54 @@ components:
           type: number
           format: decimal
           minimum: 0
+
+    # Admin API schemas
+    AdminSummaryResponse:
+      type: object
+      required:
+        - customers
+        - orders
+        - orderItems
+      properties:
+        customers:
+          type: integer
+          format: int64
+          description: Total number of customers
+        orders:
+          type: integer
+          format: int64
+          description: Total number of orders
+        orderItems:
+          type: integer
+          format: int64
+          description: Total number of order items
+
+    SeedDataResponse:
+      type: object
+      required:
+        - customersCreated
+        - ordersCreated
+        - orderItemsCreated
+      properties:
+        customersCreated:
+          type: integer
+          description: Number of customers created
+        ordersCreated:
+          type: integer
+          description: Number of orders created
+        orderItemsCreated:
+          type: integer
+          description: Number of order items created
+
+    TruncateDataResponse:
+      type: object
+      required:
+        - deleted
+        - message
+      properties:
+        deleted:
+          type: boolean
+          description: Whether data was successfully deleted
+        message:
+          type: string
+          description: Result message
