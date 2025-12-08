@@ -6,8 +6,9 @@ import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator
 
 object SqlTestHelper {
     fun executeSqlFile(jdbcTemplate: JdbcTemplate, path: String) {
-        val dataSource = jdbcTemplate.dataSource
-            ?: throw IllegalStateException("DataSource is not available for executing $path")
+        val dataSource = checkNotNull(jdbcTemplate.dataSource) {
+            "DataSource is not available for executing $path"
+        }
         ResourceDatabasePopulator(ClassPathResource(path)).execute(dataSource)
     }
 }
