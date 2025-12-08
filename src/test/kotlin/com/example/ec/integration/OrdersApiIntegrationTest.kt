@@ -62,4 +62,106 @@ class OrdersApiIntegrationTest(
         val response = restTemplate.getForEntity<String>("/api/orders/999")
         response.statusCode shouldBe HttpStatus.NOT_FOUND
     }
+
+    test("GET /api/orders returns paginated order list") {
+        SqlTestHelper.executeSqlFile(jdbcTemplate, "sql/orders-list-test-data.sql")
+
+        val response = restTemplate.getForEntity<Map<String, Any>>("/api/orders?page=0&size=3")
+
+        response.statusCode shouldBe HttpStatus.OK
+        val body = response.body
+        body shouldNotBe null
+
+        body!!["page"] shouldBe 0
+        body["size"] shouldBe 3
+        body["totalPages"] shouldBe 2
+        body["totalElements"] shouldBe 5
+
+        @Suppress("UNCHECKED_CAST")
+        val content = body["content"] as List<Map<String, Any>>
+        content.size shouldBe 3
+
+        // Orders should be sorted by orderDate DESC, id DESC
+        content[0]["id"] shouldBe 5
+        content[0]["customerName"] shouldBe "Bob Johnson"
+        content[0]["totalAmount"] shouldBe 1500.0
+        content[0]["itemCount"] shouldBe 2
+
+        content[1]["id"] shouldBe 4
+        content[1]["customerName"] shouldBe "Charlie Brown"
+        content[1]["totalAmount"] shouldBe 3000.0
+        content[1]["itemCount"] shouldBe 1
+
+        content[2]["id"] shouldBe 3
+        content[2]["customerName"] shouldBe "Alice Smith"
+        content[2]["totalAmount"] shouldBe 500.0
+        content[2]["itemCount"] shouldBe 1
+    }
+
+    test("GET /api/orders filters by date range") {
+        SqlTestHelper.executeSqlFile(jdbcTemplate, "sql/orders-list-test-data.sql")
+
+        val response = restTemplate.getForEntity<Map<String, Any>>(
+            "/api/orders?from=2024-01-15T00:00:00&to=2024-01-31T23:59:59&page=0&size=10"
+        )
+
+        response.statusCode shouldBe HttpStatus.OK
+        val body = response.body
+        body shouldNotBe null
+
+        body!!["totalElements"] shouldBe 3
+
+        @Suppress("UNCHECKED_CAST")
+        val content = body["content"] as List<Map<String, Any>>
+        content.size shouldBe 3
+
+        // Should include orders 2, 3, 4
+        content[0]["id"] shouldBe 4
+        content[1]["id"] shouldBe 3
+        content[2]["id"] shouldBe 2
+    }
+
+    test("GET /api/orders filters by customer name") {
+        SqlTestHelper.executeSqlFile(jdbcTemplate, "sql/orders-list-test-data.sql")
+
+        val response = restTemplate.getForEntity<Map<String, Any>>(
+            "/api/orders?customerName=Alice&page=0&size=10"
+        )
+
+        response.statusCode shouldBe HttpStatus.OK
+        val body = response.body
+        body shouldNotBe null
+
+        body!!["totalElements"] shouldBe 2
+
+        @Suppress("UNCHECKED_CAST")
+        val content = body["content"] as List<Map<String, Any>>
+        content.size shouldBe 2
+
+        // Should include orders from Alice Smith (orders 1, 3)
+        content[0]["id"] shouldBe 3
+        content[0]["customerName"] shouldBe "Alice Smith"
+
+        content[1]["id"] shouldBe 1
+        content[1]["customerName"] shouldBe "Alice Smith"
+    }
+
+    test("GET /api/orders returns empty list when no orders match") {
+        SqlTestHelper.executeSqlFile(jdbcTemplate, "sql/orders-list-test-data.sql")
+
+        val response = restTemplate.getForEntity<Map<String, Any>>(
+            "/api/orders?customerName=NonExistent&page=0&size=10"
+        )
+
+        response.statusCode shouldBe HttpStatus.OK
+        val body = response.body
+        body shouldNotBe null
+
+        body!!["totalElements"] shouldBe 0
+        body["totalPages"] shouldBe 0
+
+        @Suppress("UNCHECKED_CAST")
+        val content = body["content"] as List<Map<String, Any>>
+        content.size shouldBe 0
+    }
 })
