@@ -20,6 +20,7 @@ import org.springframework.stereotype.Repository
 import java.time.LocalDateTime
 
 @Repository
+@Suppress("TooManyFunctions") // Repository層は多くのメソッドを持つことが一般的
 class OrderRepositoryImpl(
     private val dsl: DSLContext
 ) : OrderRepository {
@@ -146,6 +147,51 @@ class OrderRepositoryImpl(
         return dsl.selectCount()
             .from(ORDER)
             .fetchOne(0, Long::class.java) ?: 0L
+    }
+
+    override fun countOrderItems(): Long {
+        return dsl.selectCount()
+            .from(ORDER_ITEM)
+            .fetchOne(0, Long::class.java) ?: 0L
+    }
+
+    override fun truncate() {
+        // 外部キー制約があるため、order_itemから先に削除
+        dsl.deleteFrom(ORDER_ITEM).execute()
+        dsl.deleteFrom(ORDER).execute()
+    }
+
+    override fun saveAll(orders: List<Order>): List<Order> {
+        return orders.map { order ->
+            // Orderレコードを保存
+            val orderId = dsl.insertInto(ORDER)
+                .set(ORDER.CUSTOMER_ID, order.customerId.value)
+                .set(ORDER.ORDER_DATE, order.orderDate)
+                .set(ORDER.TOTAL_AMOUNT, order.totalAmount.value)
+                .set(ORDER.CREATED_AT, order.createdAt)
+                .returningResult(ORDER.ID)
+                .fetchOne()
+                ?.value1()
+                ?: error("Failed to insert order")
+
+            // OrderItemレコードを保存
+            val savedItems = order.items.map { item ->
+                val itemId = dsl.insertInto(ORDER_ITEM)
+                    .set(ORDER_ITEM.ORDER_ID, orderId)
+                    .set(ORDER_ITEM.PRODUCT_NAME, item.productName)
+                    .set(ORDER_ITEM.QUANTITY, item.quantity)
+                    .set(ORDER_ITEM.UNIT_PRICE, item.unitPrice.value)
+                    .set(ORDER_ITEM.CREATED_AT, item.createdAt)
+                    .returningResult(ORDER_ITEM.ID)
+                    .fetchOne()
+                    ?.value1()
+                    ?: error("Failed to insert order item")
+
+                item.copy(id = ID(itemId))
+            }
+
+            order.copy(id = ID(orderId), items = savedItems)
+        }
     }
 
     private fun buildSearchCondition(

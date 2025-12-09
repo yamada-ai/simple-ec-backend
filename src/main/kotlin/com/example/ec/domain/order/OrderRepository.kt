@@ -61,4 +61,24 @@ interface OrderRepository {
      * @return 注文の総数
      */
     fun count(): Long
+
+    /**
+     * 注文明細の全件数を取得する
+     *
+     * @return 注文明細の総数
+     */
+    fun countOrderItems(): Long
+
+    /**
+     * 全注文と注文明細を削除する（開発/テスト用）
+     */
+    fun truncate()
+
+    /**
+     * 複数の注文を一括保存する
+     *
+     * @param orders 保存する注文のリスト（明細を含む）
+     * @return 保存された注文のリスト（IDが割り当てられている）
+     */
+    fun saveAll(orders: List<Order>): List<Order>
 }

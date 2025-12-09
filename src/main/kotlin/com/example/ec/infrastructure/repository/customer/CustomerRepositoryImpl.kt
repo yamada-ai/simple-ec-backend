@@ -34,6 +34,25 @@ class CustomerRepositoryImpl(
             .fetchOne(0, Long::class.java) ?: 0L
     }
 
+    override fun truncate() {
+        dsl.deleteFrom(CUSTOMER).execute()
+    }
+
+    override fun saveAll(customers: List<Customer>): List<Customer> {
+        return customers.map { customer ->
+            val insertedId = dsl.insertInto(CUSTOMER)
+                .set(CUSTOMER.NAME, customer.name)
+                .set(CUSTOMER.EMAIL, customer.email.value)
+                .set(CUSTOMER.CREATED_AT, customer.createdAt)
+                .returningResult(CUSTOMER.ID)
+                .fetchOne()
+                ?.value1()
+                ?: error("Failed to insert customer")
+
+            customer.copy(id = ID(insertedId))
+        }
+    }
+
     private fun convertToCustomer(record: CustomerRecord): Customer {
         return Customer(
             id = ID(record.id!!),
