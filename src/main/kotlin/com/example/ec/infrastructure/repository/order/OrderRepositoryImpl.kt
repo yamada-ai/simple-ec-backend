@@ -18,6 +18,7 @@ import org.jooq.DSLContext
 import org.jooq.impl.DSL
 import org.springframework.stereotype.Repository
 import java.time.LocalDateTime
+import java.util.stream.Stream
 
 @Repository
 @Suppress("TooManyFunctions") // Repository層は多くのメソッドを持つことが一般的
@@ -246,5 +247,40 @@ class OrderRepositoryImpl(
             unitPrice = Price(record.unitPrice!!),
             createdAt = record.createdAt!!
         )
+    }
+
+    override fun streamOrdersForExport(
+        from: LocalDateTime?,
+        to: LocalDateTime?
+    ): Stream<Order> {
+        val conditions = mutableListOf<Condition>()
+
+        from?.let {
+            conditions.add(ORDER.ORDER_DATE.greaterOrEqual(it))
+        }
+
+        to?.let {
+            conditions.add(ORDER.ORDER_DATE.lessOrEqual(it))
+        }
+
+        val whereCondition = if (conditions.isEmpty()) {
+            DSL.noCondition()
+        } else {
+            DSL.and(conditions)
+        }
+
+        // jOOQのfetchStream()で遅延評価のStreamを取得
+        val orderStream = dsl.selectFrom(ORDER)
+            .where(whereCondition)
+            .orderBy(ORDER.ORDER_DATE.desc(), ORDER.ID.desc())
+            .fetchStream()
+
+        // 各OrderについてOrderItemsを取得してOrderエンティティに変換
+        // この時点ではN+1が発生するが、ストリーミング処理なのでメモリは節約される
+        // 各Strategyで異なるアプローチを試す
+        return orderStream.map { orderRecord ->
+            val items = fetchItems(orderRecord.id!!)
+            convertToOrder(orderRecord, items)
+        }
     }
 }
