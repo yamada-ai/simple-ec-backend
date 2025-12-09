@@ -40,16 +40,18 @@ class SeedDataUseCase(
      *
      * @param customersCount 生成する顧客数
      * @param ordersCount 生成する注文数
+     * @param seed ランダムシード（nullの場合はランダム、指定すると再現可能）
      * @return 生成結果
      */
     @Transactional
-    fun execute(customersCount: Int, ordersCount: Int): SeedResult {
+    fun execute(customersCount: Int, ordersCount: Int, seed: Long? = null): SeedResult {
+        val random = seed?.let { Random(it) } ?: Random
         // 顧客を生成
         val customers = generateCustomers(customersCount)
         val savedCustomers = customerRepository.saveAll(customers)
 
         // 注文を生成
-        val orders = generateOrders(ordersCount, savedCustomers)
+        val orders = generateOrders(ordersCount, savedCustomers, random)
         val savedOrders = orderRepository.saveAll(orders)
 
         // 生成された明細の総数を計算
@@ -74,17 +76,17 @@ class SeedDataUseCase(
         }
     }
 
-    private fun generateOrders(count: Int, customers: List<Customer>): List<Order> {
+    private fun generateOrders(count: Int, customers: List<Customer>, random: Random): List<Order> {
         val now = LocalDateTime.now()
 
         return (1..count).map { _ ->
             // ランダムな顧客を選択
-            val customer = customers.random()
+            val customer = customers.random(random)
 
             // 過去30日以内のランダムな日時
-            val randomDaysAgo = Random.nextLong(0, MAX_DAYS_AGO)
-            val randomHours = Random.nextLong(0, HOURS_IN_DAY)
-            val randomMinutes = Random.nextLong(0, MINUTES_IN_HOUR)
+            val randomDaysAgo = random.nextLong(0, MAX_DAYS_AGO)
+            val randomHours = random.nextLong(0, HOURS_IN_DAY)
+            val randomMinutes = random.nextLong(0, MINUTES_IN_HOUR)
             val orderDate = now
                 .minusDays(randomDaysAgo)
                 .withHour(randomHours.toInt())
@@ -93,8 +95,8 @@ class SeedDataUseCase(
                 .withNano(0)
 
             // 注文明細を生成（3〜7個）
-            val itemsCount = Random.nextInt(MIN_ITEMS_PER_ORDER, MAX_ITEMS_PER_ORDER)
-            val items = generateOrderItems(itemsCount, orderDate)
+            val itemsCount = random.nextInt(MIN_ITEMS_PER_ORDER, MAX_ITEMS_PER_ORDER)
+            val items = generateOrderItems(itemsCount, orderDate, random)
 
             // 合計金額を計算
             val totalAmount = items.fold(Price.ZERO) { acc, item ->
@@ -112,17 +114,17 @@ class SeedDataUseCase(
         }
     }
 
-    private fun generateOrderItems(count: Int, createdAt: LocalDateTime): List<OrderItem> {
+    private fun generateOrderItems(count: Int, createdAt: LocalDateTime, random: Random): List<OrderItem> {
         return (1..count).map { _ ->
             // 商品名: "商品{1..100}" からランダム
-            val productIndex = Random.nextInt(MIN_PRODUCT_INDEX, MAX_PRODUCT_INDEX)
+            val productIndex = random.nextInt(MIN_PRODUCT_INDEX, MAX_PRODUCT_INDEX)
             val productName = "商品$productIndex"
 
             // 数量: 1〜5
-            val quantity = Random.nextInt(MIN_QUANTITY, MAX_QUANTITY)
+            val quantity = random.nextInt(MIN_QUANTITY, MAX_QUANTITY)
 
             // 単価: 500〜10000 の500円単位
-            val unitPriceInt = Random.nextInt(MIN_UNIT_PRICE_MULTIPLIER, MAX_UNIT_PRICE_MULTIPLIER) * UNIT_PRICE_STEP
+            val unitPriceInt = random.nextInt(MIN_UNIT_PRICE_MULTIPLIER, MAX_UNIT_PRICE_MULTIPLIER) * UNIT_PRICE_STEP
             val unitPrice = Price(BigDecimal(unitPriceInt))
 
             OrderItem(

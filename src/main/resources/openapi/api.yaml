@@ -326,7 +326,7 @@ paths:
       tags:
         - admin
       summary: Seed test data
-      description: Generate random test data for development/testing
+      description: Generate test data for development/testing. Use seed parameter for reproducible data generation.
       operationId: seedData
       parameters:
         - name: customers
@@ -345,6 +345,12 @@ paths:
             default: 1000
             minimum: 1
             maximum: 100000
+        - name: seed
+          in: query
+          description: Random seed for reproducible data generation (optional, random if not specified)
+          schema:
+            type: integer
+            format: int64
       responses:
         '200':
           description: Success

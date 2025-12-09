@@ -41,9 +41,10 @@ class AdminApiController(
     @PostMapping("/seed")
     fun seedData(
         @RequestParam(defaultValue = "100") customers: Int,
-        @RequestParam(defaultValue = "1000") orders: Int
+        @RequestParam(defaultValue = "1000") orders: Int,
+        @RequestParam(required = false) seed: Long?
     ): ResponseEntity<SeedDataResponse> {
-        val result = seedDataUseCase.execute(customers, orders)
+        val result = seedDataUseCase.execute(customers, orders, seed)
 
         val response = SeedDataResponse(
             customersCreated = result.customersCreated,
