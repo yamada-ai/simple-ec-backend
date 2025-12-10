@@ -3,6 +3,7 @@ package com.example.ec.infrastructure.repository.order
 import com.example.ec.application.order.OrderListItemView
 import com.example.ec.domain.customer.Customer
 import com.example.ec.domain.order.Order
+import com.example.ec.domain.order.OrderExportRow
 import com.example.ec.domain.order.OrderItem
 import com.example.ec.domain.order.OrderRepository
 import com.example.ec.domain.shared.ID
@@ -252,7 +253,7 @@ class OrderRepositoryImpl(
     override fun streamOrdersForExport(
         from: LocalDateTime?,
         to: LocalDateTime?
-    ): Stream<Order> {
+    ): Stream<OrderExportRow> {
         val conditions = mutableListOf<Condition>()
 
         from?.let {
@@ -269,18 +270,34 @@ class OrderRepositoryImpl(
             DSL.and(conditions)
         }
 
-        // jOOQのfetchStream()で遅延評価のStreamを取得
-        val orderStream = dsl.selectFrom(ORDER)
+        // Order + Customer + OrderItem を1クエリで取得し、N+1を解消
+        return dsl.select(
+            ORDER.ID,
+            ORDER.CUSTOMER_ID,
+            CUSTOMER.NAME,
+            CUSTOMER.EMAIL,
+            ORDER.ORDER_DATE,
+            ORDER_ITEM.PRODUCT_NAME,
+            ORDER_ITEM.QUANTITY,
+            ORDER_ITEM.UNIT_PRICE
+        )
+            .from(ORDER)
+            .join(CUSTOMER).on(CUSTOMER.ID.eq(ORDER.CUSTOMER_ID))
+            .join(ORDER_ITEM).on(ORDER_ITEM.ORDER_ID.eq(ORDER.ID))
             .where(whereCondition)
-            .orderBy(ORDER.ORDER_DATE.desc(), ORDER.ID.desc())
+            .orderBy(ORDER.ORDER_DATE.desc(), ORDER.ID.desc(), ORDER_ITEM.ID.desc())
             .fetchStream()
-
-        // 各OrderについてOrderItemsを取得してOrderエンティティに変換
-        // この時点ではN+1が発生するが、ストリーミング処理なのでメモリは節約される
-        // 各Strategyで異なるアプローチを試す
-        return orderStream.map { orderRecord ->
-            val items = fetchItems(orderRecord.id!!)
-            convertToOrder(orderRecord, items)
-        }
+            .map { record ->
+                OrderExportRow(
+                    orderId = record.get(ORDER.ID)!!,
+                    customerId = record.get(ORDER.CUSTOMER_ID)!!,
+                    customerName = record.get(CUSTOMER.NAME)!!,
+                    customerEmail = record.get(CUSTOMER.EMAIL)!!,
+                    orderDate = record.get(ORDER.ORDER_DATE)!!,
+                    productName = record.get(ORDER_ITEM.PRODUCT_NAME)!!,
+                    quantity = record.get(ORDER_ITEM.QUANTITY)!!,
+                    unitPrice = record.get(ORDER_ITEM.UNIT_PRICE)!!
+                )
+            }
     }
 }

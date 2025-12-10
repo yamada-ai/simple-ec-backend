@@ -1,9 +1,6 @@
 package com.example.ec.application.export
 
-import com.example.ec.domain.customer.CustomerRepository
-import com.example.ec.domain.order.Order
 import com.example.ec.domain.order.OrderRepository
-import com.example.ec.domain.shared.ID
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
 import java.util.stream.Stream
@@ -16,8 +13,7 @@ import java.util.stream.Stream
  */
 @Service
 class OrderExportService(
-    private val orderRepository: OrderRepository,
-    private val customerRepository: CustomerRepository
+    private val orderRepository: OrderRepository
 ) {
     /**
      * 注文データをCSV行としてエクスポートする
@@ -30,38 +26,19 @@ class OrderExportService(
         from: LocalDateTime?,
         to: LocalDateTime?
     ): Stream<OrderCsvRow> {
-        // OrderRepositoryからOrderのストリームを取得（SQL JOINで取得済み）
-        val orders = orderRepository.streamOrdersForExport(from, to)
-
-        // Customer情報を取得する関数（キャッシュ付き）
-        // Note: ここでN+1が発生するが、ストリーミング処理なのでメモリは節約される
-        // 実運用では、顧客情報もJOINするか、キャッシュ層を挟む等の最適化が必要
-        val customerCache = mutableMapOf<Long, Pair<String, String>>()
-        val getCustomer: (Long) -> Pair<String, String> = { customerId ->
-            customerCache.getOrPut(customerId) {
-                val customer = customerRepository.findById(ID(customerId))
-                (customer?.name ?: "Unknown") to (customer?.email?.value ?: "unknown@example.com")
-            }
-        }
-
-        // Java Stream の flatMap で Order → OrderItems を展開
-        return orders.flatMap { order ->
-            val customerId = order.customerId.value
-            val (customerName, customerEmail) = getCustomer(customerId)
-
-            // 1つのOrderから複数のOrderItemsへ展開
-            order.items.stream().map { item ->
+        // OrderRepositoryからフラットなCSV行データを1クエリで取得（N+1解消済み）
+        return orderRepository.streamOrdersForExport(from, to)
+            .map { row ->
                 OrderCsvRow(
-                    orderId = order.id.value,
-                    customerId = customerId,
-                    customerName = customerName,
-                    customerEmail = customerEmail,
-                    orderDate = order.orderDate,
-                    productName = item.productName,
-                    quantity = item.quantity,
-                    unitPrice = item.unitPrice.value
+                    orderId = row.orderId,
+                    customerId = row.customerId,
+                    customerName = row.customerName,
+                    customerEmail = row.customerEmail,
+                    orderDate = row.orderDate,
+                    productName = row.productName,
+                    quantity = row.quantity,
+                    unitPrice = row.unitPrice
                 )
             }
-        }
     }
 }
