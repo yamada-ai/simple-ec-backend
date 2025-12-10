@@ -33,16 +33,56 @@ Stream/Sequenceは**join機構を持たない**。この制約下で以下の問
 - **RDBは行方向が得意**：列を動的に増やす処理はDB側で完結させにくい
 - **Stream/Sequenceにjoin不在**：標準では2つのストリームをキーでjoinできない
 
+## 🧪 検証マトリクス
+
+### Phase 1: 行展開パターン（Order → OrderItem）
+
+| Strategy | 実装方法 | 評価型 | 中間オブジェクト | 期待されるメモリ効率 |
+|----------|---------|--------|----------------|------------------|
+| **Sequence** | `flatMap` on Kotlin Sequence | Pull (遅延) | 最小 | ⭐⭐⭐ |
+| **Stream flatMap** | `flatMap` on Java Stream | Push (遅延) | 中間Stream生成 | ⭐⭐ |
+| **Stream mapMulti** | `mapMulti` (Java 16+) | Push (遅延) | Consumer直接 | ⭐⭐⭐ |
+| **Spliterator** | カスタムSpliterator | Pull (制御可能) | 手動管理 | ⭐⭐⭐ |
+
+### Phase 2: 列展開パターン（動的Order Attributes）
+
+| Strategy | 実装方法 | 動的列の扱い | メモリ効率 | 実装難易度 |
+|----------|---------|------------|-----------|----------|
+| **Map事前取得** | 全属性値をMapに格納 | 簡単 | ⭐ (全データメモリ展開) | ⭐ (簡単) |
+| **Multiset** | jOOQのmultiset機能 | 中程度 | ⭐⭐ (件数増で劣化) | ⭐⭐ |
+| **Sequence窓処理** | WindowingでGroup化 | 難しい | ⭐⭐⭐ (ストリーミング) | ⭐⭐⭐ |
+
+### 検証環境条件
+
+会社での実証実験を参考：
+
+| 項目 | 値 | 備考 |
+|------|-----|------|
+| メモリ制限 | 512MB | `-Xmx512m` |
+| 親レコード数 | 10,000件 | Order数 |
+| 属性定義数 | 15件 | 動的カラム数 |
+| 属性値サイズ | 3,000文字 | 1属性あたり |
+| 出力ファイルサイズ上限 | 100MB | LimitedOutputStream |
+| jOOQ fetchSize | 1,000 | カーソルチャンク |
+
+### OOM発生条件の検証
+
+- **ByteArrayOutputStream**: 全データをメモリ上に蓄積（OOMの主要因）
+- **Map事前取得**: 属性値を全てMapに展開 → OOM発生リスク高
+- **Sequence/Stream**: 遅延評価でOOM回避可能か検証
+- **メモリ監視**: `Runtime.getRuntime()` でヒープ使用量をログ出力
+
 ## 技術スタック
 
 - **Kotlin** 1.9.25
 - **Spring Boot** 3.5.x
 - **PostgreSQL** 17
-- **jOOQ** 3.19.x (型安全 SQL)
+- **jOOQ** 3.19.x (型安全 SQL + fetchLazy/fetchStream)
 - **Flyway** (DB マイグレーション)
 - **Kotest** (テスト)
 - **Detekt** (静的解析)
 - **OpenAPI Generator** (API スキーマ駆動開発)
+- **Apache Commons CSV** 1.12.0 (CSV生成、予定)
 
 ## 🗄 DB構成
 
