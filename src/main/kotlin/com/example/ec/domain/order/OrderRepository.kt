@@ -4,6 +4,7 @@ import com.example.ec.application.order.OrderListItemView
 import com.example.ec.domain.shared.ID
 import com.example.ec.domain.shared.Page
 import java.time.LocalDateTime
+import java.util.stream.Stream
 
 /**
  * 注文リポジトリインターフェース
@@ -81,4 +82,19 @@ interface OrderRepository {
      * @return 保存された注文のリスト（IDが割り当てられている）
      */
     fun saveAll(orders: List<Order>): List<Order>
+
+    /**
+     * CSV出力用に注文データをストリーミングで取得する
+     *
+     * 注文（Order）と明細（OrderItem）を含む完全なデータを返す。
+     * 遅延評価でメモリ効率を保つ。
+     *
+     * @param from 注文日の開始日時（inclusive、nullの場合は制限なし）
+     * @param to 注文日の終了日時（inclusive、nullの場合は制限なし）
+     * @return 注文のストリーム（明細とCustomer情報を含む）
+     */
+    fun streamOrdersForExport(
+        from: LocalDateTime?,
+        to: LocalDateTime?
+    ): Stream<Order>
 }
