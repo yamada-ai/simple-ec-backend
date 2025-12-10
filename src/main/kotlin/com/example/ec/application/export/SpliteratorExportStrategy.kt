@@ -73,12 +73,10 @@ class SpliteratorExportStrategy : ExportStrategy {
             val customerId = order.customerId.value
             return OrderCsvRow(
                 orderId = order.id.value,
-                orderDate = order.orderDate,
-                totalAmount = order.totalAmount.value,
                 customerId = customerId,
                 customerName = getCustomerName(customerId),
                 customerEmail = getCustomerEmail(customerId),
-                orderItemId = item.id.value,
+                orderDate = order.orderDate,
                 productName = item.productName,
                 quantity = item.quantity,
                 unitPrice = item.unitPrice.value

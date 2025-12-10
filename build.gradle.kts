@@ -58,6 +58,9 @@ dependencies {
 	implementation("io.swagger.core.v3:swagger-annotations:2.2.27")
 	implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.7.0")
 
+	// CSV処理
+	implementation("org.apache.commons:commons-csv:1.12.0")
+
 	developmentOnly("org.springframework.boot:spring-boot-devtools")
 	annotationProcessor("org.springframework.boot:spring-boot-configuration-processor")
 

@@ -9,13 +9,12 @@ import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.RestController
-import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
-import java.io.InputStream
+import java.io.PipedInputStream
+import java.io.PipedOutputStream
 import java.io.PrintWriter
-import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.ZoneId
+import kotlin.concurrent.thread
 
 /**
  * CSV出力APIコントローラ
@@ -34,11 +33,44 @@ class ExportApiController(
         val from = startDate?.atZoneSameInstant(ZoneId.systemDefault())?.toLocalDateTime()
         val to = endDate?.atZoneSameInstant(ZoneId.systemDefault())?.toLocalDateTime()
 
-        // CSV生成
-        val csvStream = generateCsvStream(from, to, strategy)
+        // ストリーミング用のPipedStream
+        // PipedInputStreamとPipedOutputStreamで、書き込みと読み込みを並行実行
+        val pipedOutputStream = PipedOutputStream()
+        val pipedInputStream = PipedInputStream(pipedOutputStream)
+
+        // 別スレッドでCSV書き込み（ストリーミング）
+        // メインスレッドはInputStreamResourceを即座に返し、クライアントへの送信を開始
+        thread(start = true, name = "csv-export-$strategy") {
+            @Suppress("TooGenericExceptionCaught") // ストリーミング中の全ての例外をキャッチして伝播
+            try {
+                pipedOutputStream.use { outputStream ->
+                    val writer = PrintWriter(outputStream, true, Charsets.UTF_8)
+
+                    // CSVヘッダーを書き込み
+                    writer.println(OrderCsvRow.CSV_HEADER)
+
+                    // UseCaseからCSV行のストリームを取得
+                    val csvRows = exportOrdersUseCase.execute(from, to, strategy)
+
+                    // Stream.use{}で確実にcloseしてリソースリーク（DBコネクション等）を防ぐ
+                    csvRows.use { stream ->
+                        stream.forEach { row ->
+                            writer.println(row.toCsvLine())
+                        }
+                    }
+
+                    writer.flush()
+                }
+            } catch (e: Throwable) {
+                // エラーハンドリング（本来はログ出力など）
+                e.printStackTrace()
+                throw e
+            }
+        }
 
         // InputStreamResourceとしてラップ
-        val resource = InputStreamResource(csvStream)
+        // この時点でまだCSV生成は完了していないが、ストリーミングで逐次読み取られる
+        val resource = InputStreamResource(pipedInputStream)
 
         // ファイル名を生成
         val filename = "orders_export_${System.currentTimeMillis()}.csv"
@@ -47,34 +79,5 @@ class ExportApiController(
             .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"$filename\"")
             .contentType(MediaType.parseMediaType("text/csv"))
             .body(resource)
-    }
-
-    private fun generateCsvStream(
-        from: LocalDateTime?,
-        to: LocalDateTime?,
-        strategyName: String
-    ): InputStream {
-        // ByteArrayOutputStreamに一旦書き込む
-        // 本来はStreamingResponseBodyを使うべきだが、OpenAPI生成コードがResourceを返すため、この方法を採用
-        val byteArrayOutputStream = ByteArrayOutputStream()
-        val writer = PrintWriter(byteArrayOutputStream, true, Charsets.UTF_8)
-
-        try {
-            // CSVヘッダーを書き込み
-            writer.println(OrderCsvRow.csvHeader())
-
-            // UseCaseからCSV行のストリームを取得して書き込み
-            val csvRows = exportOrdersUseCase.execute(from, to, strategyName)
-            csvRows.forEach { row ->
-                writer.println(row.toCsvLine())
-            }
-
-            writer.flush()
-        } finally {
-            writer.close()
-        }
-
-        // ByteArrayInputStreamに変換して返す
-        return ByteArrayInputStream(byteArrayOutputStream.toByteArray())
     }
 }

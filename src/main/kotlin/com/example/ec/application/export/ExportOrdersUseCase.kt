@@ -43,13 +43,17 @@ class ExportOrdersUseCase(
         // Customer情報を取得する関数
         // Note: ここでN+1が発生するが、ストリーミング処理なのでメモリは節約される
         // 実運用では、顧客情報をキャッシュする等の最適化が必要
-        val getCustomerName: (Long) -> String = { customerId ->
-            customerRepository.findById(ID(customerId))?.name ?: "Unknown"
+        // 顧客取得を1回にまとめる（名前とメールを別々に取得していたのを統合）
+        val customerCache = mutableMapOf<Long, Pair<String, String>>()
+        val getCustomer: (Long) -> Pair<String, String> = { customerId ->
+            customerCache.getOrPut(customerId) {
+                val customer = customerRepository.findById(ID(customerId))
+                (customer?.name ?: "Unknown") to (customer?.email?.value ?: "unknown@example.com")
+            }
         }
 
-        val getCustomerEmail: (Long) -> String = { customerId ->
-            customerRepository.findById(ID(customerId))?.email?.value ?: "unknown@example.com"
-        }
+        val getCustomerName: (Long) -> String = { customerId -> getCustomer(customerId).first }
+        val getCustomerEmail: (Long) -> String = { customerId -> getCustomer(customerId).second }
 
         // 選択された戦略でエクスポート
         return strategy.export(orders, getCustomerName, getCustomerEmail)

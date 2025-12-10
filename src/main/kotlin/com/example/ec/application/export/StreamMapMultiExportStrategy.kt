@@ -28,12 +28,10 @@ class StreamMapMultiExportStrategy : ExportStrategy {
             order.items.forEach { item ->
                 val csvRow = OrderCsvRow(
                     orderId = order.id.value,
-                    orderDate = order.orderDate,
-                    totalAmount = order.totalAmount.value,
                     customerId = customerId,
                     customerName = customerName,
                     customerEmail = customerEmail,
-                    orderItemId = item.id.value,
+                    orderDate = order.orderDate,
                     productName = item.productName,
                     quantity = item.quantity,
                     unitPrice = item.unitPrice.value
