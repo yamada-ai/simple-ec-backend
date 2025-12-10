@@ -6,16 +6,30 @@ import com.example.ec.domain.order.OrderRepository
 import org.springframework.stereotype.Service
 import java.io.PrintWriter
 import java.time.LocalDateTime
+import java.util.Locale
 
 /**
  * 注文属性付きCSV出力のサービス（横展開）。
- * strategy は現状すべて同一実装だが、切替可能なようインターフェースを確保。
+ * strategy パラメータで実験的に切り替え可能にする。
  */
 @Service
 class OrderAttributeExportService(
     private val orderRepository: OrderRepository,
     private val definitionRepository: OrderAttributeDefinitionRepository
 ) {
+
+    enum class AttributeExportStrategy {
+        JOIN,
+        MULTISET,
+        SEQUENCE_WINDOW,
+        STREAM_WINDOW,
+        SPLITERATOR_WINDOW;
+
+        companion object {
+            fun from(value: String): AttributeExportStrategy =
+                entries.firstOrNull { it.name.equals(value, ignoreCase = true) } ?: JOIN
+        }
+    }
 
     fun writeCsv(
         from: LocalDateTime?,
@@ -24,18 +38,31 @@ class OrderAttributeExportService(
         writer: PrintWriter
     ) {
         val definitions = definitionRepository.findAll()
-        writeHeader(definitions.map { it.label }, writer)
+        val definitionIds = definitions.map { it.id.value }
+        val definitionLabels = definitions.map { it.label }
+        val exportStrategy = AttributeExportStrategy.from(strategy)
 
-        // 1クエリ JOIN ストリームを利用
-        val rows = orderRepository.streamOrdersWithAttributes(from, to)
-        rows.use { stream ->
-            when (strategy) {
-                "multiset",
-                "sequence-window",
-                "stream-window",
-                "spliterator-window",
-                "join" -> writeBody(definitions.map { it.id.value }, stream, writer)
-                else -> writeBody(definitions.map { it.id.value }, stream, writer)
+        writeHeader(definitionLabels, writer)
+
+        when (exportStrategy) {
+            AttributeExportStrategy.JOIN,
+            AttributeExportStrategy.STREAM_WINDOW,
+            AttributeExportStrategy.SPLITERATOR_WINDOW -> {
+                orderRepository.streamOrdersWithAttributes(from, to).use { stream ->
+                    writeWindowed(definitionIds, stream.iterator(), writer)
+                }
+            }
+
+            AttributeExportStrategy.SEQUENCE_WINDOW -> {
+                orderRepository.streamOrdersWithAttributes(from, to).use { stream ->
+                    writeWindowed(definitionIds, stream.iterator().asSequence().iterator(), writer)
+                }
+            }
+
+            AttributeExportStrategy.MULTISET -> {
+                orderRepository.streamOrdersWithAttributes(from, to).use { stream ->
+                    writeMultiset(definitionIds, stream, writer)
+                }
             }
         }
     }
@@ -46,9 +73,9 @@ class OrderAttributeExportService(
         writer.println(header)
     }
 
-    private fun writeBody(
+    private fun writeWindowed(
         definitionIds: List<Long>,
-        rows: java.util.stream.Stream<OrderAttributeJoinedRow>,
+        iterator: Iterator<OrderAttributeJoinedRow>,
         writer: PrintWriter
     ) {
         var currentOrderId: Long? = null
@@ -70,7 +97,7 @@ class OrderAttributeExportService(
             valueMap.clear()
         }
 
-        rows.forEach { row ->
+        iterator.forEach { row ->
             if (currentOrderId == null) {
                 currentOrderId = row.orderId
                 currentRow = row
@@ -86,5 +113,30 @@ class OrderAttributeExportService(
         }
 
         flush()
+    }
+
+    private fun writeMultiset(
+        definitionIds: List<Long>,
+        stream: java.util.stream.Stream<OrderAttributeJoinedRow>,
+        writer: PrintWriter
+    ) {
+        val grouped = stream.toList().groupBy { it.orderId }
+        grouped.toSortedMap().forEach { (_, rows) ->
+            if (rows.isEmpty()) return@forEach
+            val base = rows.first()
+            val valueMap = rows
+                .filter { it.definitionId != null && it.value != null }
+                .associate { it.definitionId!! to it.value!! }
+            val values = definitionIds.map { valueMap[it] ?: "" }
+            writer.println(
+                listOf(
+                    base.orderId.toString(),
+                    base.customerId.toString(),
+                    base.customerName,
+                    base.customerEmail,
+                    base.orderDate.toString()
+                ).plus(values).joinToString(",")
+            )
+        }
     }
 }
