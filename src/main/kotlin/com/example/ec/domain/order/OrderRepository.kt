@@ -84,17 +84,10 @@ interface OrderRepository {
     fun saveAll(orders: List<Order>): List<Order>
 
     /**
-     * CSV出力用に注文データをストリーミングで取得する
-     *
-     * 注文（Order）と明細（OrderItem）を含む完全なデータを返す。
-     * 遅延評価でメモリ効率を保つ。
-     *
-     * @param from 注文日の開始日時（inclusive、nullの場合は制限なし）
-     * @param to 注文日の終了日時（inclusive、nullの場合は制限なし）
-     * @return 注文のストリーム（明細とCustomer情報を含む）
+     * CSV出力用に注文＋顧客＋注文明細を1クエリでストリーミング取得する
      */
     fun streamOrdersForExport(
         from: LocalDateTime?,
         to: LocalDateTime?
-    ): Stream<Order>
+    ): Stream<OrderExportRow>
 }
