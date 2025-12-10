@@ -1,6 +1,8 @@
 package com.example.ec.infrastructure.repository.order
 
 import com.example.ec.application.order.OrderListItemView
+import com.example.ec.domain.attribute.OrderAttributeDefinition
+import com.example.ec.domain.attribute.OrderAttributeValue
 import com.example.ec.domain.customer.Customer
 import com.example.ec.domain.order.Order
 import com.example.ec.domain.order.OrderExportRow
@@ -9,10 +11,12 @@ import com.example.ec.domain.order.OrderRepository
 import com.example.ec.domain.shared.ID
 import com.example.ec.domain.shared.Page
 import com.example.ec.domain.shared.Price
+import com.example.ec.infrastructure.jooq.tables.records.OrderAttributeValueRecord
 import com.example.ec.infrastructure.jooq.tables.records.OrderItemRecord
 import com.example.ec.infrastructure.jooq.tables.records.OrderRecord
 import com.example.ec.infrastructure.jooq.tables.references.CUSTOMER
 import com.example.ec.infrastructure.jooq.tables.references.ORDER
+import com.example.ec.infrastructure.jooq.tables.references.ORDER_ATTRIBUTE_VALUE
 import com.example.ec.infrastructure.jooq.tables.references.ORDER_ITEM
 import org.jooq.Condition
 import org.jooq.DSLContext
@@ -34,7 +38,8 @@ class OrderRepositoryImpl(
             ?: return null
 
         val items = fetchItems(orderRecord.id!!)
-        return convertToOrder(orderRecord, items)
+        val attributes = fetchAttributes(orderRecord.id!!)
+        return convertToOrder(orderRecord, items, attributes)
     }
 
     override fun search(
@@ -76,10 +81,22 @@ class OrderRepositoryImpl(
             emptyMap()
         }
 
-        // OrderエンティティにItemsを含めて変換
+        // 全てのOrderAttributeValuesを一度に取得してグルーピング（N+1問題を回避）
+        val attributesByOrderId = if (orderIds.isNotEmpty()) {
+            dsl.selectFrom(ORDER_ATTRIBUTE_VALUE)
+                .where(ORDER_ATTRIBUTE_VALUE.ORDER_ID.`in`(orderIds))
+                .fetch()
+                .groupBy { it.orderId!! }
+                .mapValues { (_, records) -> records.map { convertToOrderAttributeValue(it) } }
+        } else {
+            emptyMap()
+        }
+
+        // OrderエンティティにItemsとAttributesを含めて変換
         val orders = orderRecords.map { record ->
             val items = itemsByOrderId[record.id!!] ?: emptyList()
-            convertToOrder(record, items)
+            val attributes = attributesByOrderId[record.id!!] ?: emptyList()
+            convertToOrder(record, items, attributes)
         }
 
         return Page(
@@ -158,7 +175,8 @@ class OrderRepositoryImpl(
     }
 
     override fun truncate() {
-        // 外部キー制約があるため、order_itemから先に削除
+        // 外部キー制約があるため、子テーブルから先に削除
+        dsl.deleteFrom(ORDER_ATTRIBUTE_VALUE).execute()
         dsl.deleteFrom(ORDER_ITEM).execute()
         dsl.deleteFrom(ORDER).execute()
     }
@@ -192,7 +210,22 @@ class OrderRepositoryImpl(
                 item.copy(id = ID(itemId))
             }
 
-            order.copy(id = ID(orderId), items = savedItems)
+            // OrderAttributeValueレコードを保存
+            val savedAttributes = order.attributes.map { attr ->
+                val attrId = dsl.insertInto(ORDER_ATTRIBUTE_VALUE)
+                    .set(ORDER_ATTRIBUTE_VALUE.ORDER_ID, orderId)
+                    .set(ORDER_ATTRIBUTE_VALUE.ATTRIBUTE_DEFINITION_ID, attr.attributeDefinitionId.value)
+                    .set(ORDER_ATTRIBUTE_VALUE.VALUE, attr.value)
+                    .set(ORDER_ATTRIBUTE_VALUE.CREATED_AT, attr.createdAt)
+                    .returningResult(ORDER_ATTRIBUTE_VALUE.ID)
+                    .fetchOne()
+                    ?.value1()
+                    ?: error("Failed to insert order attribute value")
+
+                attr.copy(id = ID(attrId))
+            }
+
+            order.copy(id = ID(orderId), items = savedItems, attributes = savedAttributes)
         }
     }
 
@@ -229,14 +262,26 @@ class OrderRepositoryImpl(
             .map { convertToOrderItem(it) }
     }
 
-    private fun convertToOrder(record: OrderRecord, items: List<OrderItem>): Order {
+    private fun fetchAttributes(orderId: Long): List<OrderAttributeValue> {
+        return dsl.selectFrom(ORDER_ATTRIBUTE_VALUE)
+            .where(ORDER_ATTRIBUTE_VALUE.ORDER_ID.eq(orderId))
+            .fetch()
+            .map { convertToOrderAttributeValue(it) }
+    }
+
+    private fun convertToOrder(
+        record: OrderRecord,
+        items: List<OrderItem>,
+        attributes: List<OrderAttributeValue> = emptyList()
+    ): Order {
         return Order(
             id = ID(record.id!!),
             customerId = ID(record.customerId!!),
             orderDate = record.orderDate!!,
             totalAmount = Price(record.totalAmount!!),
             createdAt = record.createdAt!!,
-            items = items
+            items = items,
+            attributes = attributes
         )
     }
 
@@ -246,6 +291,15 @@ class OrderRepositoryImpl(
             productName = record.productName!!,
             quantity = record.quantity!!,
             unitPrice = Price(record.unitPrice!!),
+            createdAt = record.createdAt!!
+        )
+    }
+
+    private fun convertToOrderAttributeValue(record: OrderAttributeValueRecord): OrderAttributeValue {
+        return OrderAttributeValue(
+            id = ID(record.id!!),
+            attributeDefinitionId = ID(record.attributeDefinitionId!!),
+            value = record.value!!,
             createdAt = record.createdAt!!
         )
     }

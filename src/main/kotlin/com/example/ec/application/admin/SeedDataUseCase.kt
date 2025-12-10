@@ -109,7 +109,8 @@ class SeedDataUseCase(
                 orderDate = orderDate,
                 totalAmount = totalAmount,
                 createdAt = orderDate,
-                items = items
+                items = items,
+                attributes = emptyList()
             )
         }
     }
