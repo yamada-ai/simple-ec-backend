@@ -20,7 +20,8 @@ class OrderTest : FunSpec({
                 orderDate = now,
                 totalAmount = Price.of("12345.67"),
                 createdAt = now,
-                items = emptyList()
+                items = emptyList(),
+                attributes = emptyList()
             )
 
             order shouldBe Order(
@@ -29,7 +30,8 @@ class OrderTest : FunSpec({
                 orderDate = now,
                 totalAmount = Price.of("12345.67"),
                 createdAt = now,
-                items = emptyList()
+                items = emptyList(),
+                attributes = emptyList()
             )
         }
 
@@ -41,7 +43,8 @@ class OrderTest : FunSpec({
                     orderDate = LocalDateTime.now(),
                     totalAmount = Price.of("-100"),
                     createdAt = LocalDateTime.now(),
-                    items = emptyList()
+                    items = emptyList(),
+                    attributes = emptyList()
                 )
             }
             exception.message shouldContain "Price must be non-negative"
@@ -54,7 +57,8 @@ class OrderTest : FunSpec({
                 orderDate = LocalDateTime.now(),
                 totalAmount = Price.ZERO,
                 createdAt = LocalDateTime.now(),
-                items = emptyList()
+                items = emptyList(),
+                attributes = emptyList()
             )
 
             order.totalAmount shouldBe Price.ZERO

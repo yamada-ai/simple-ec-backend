@@ -1,5 +1,6 @@
 package com.example.ec.domain.order
 
+import com.example.ec.domain.attribute.OrderAttributeValue
 import com.example.ec.domain.customer.Customer
 import com.example.ec.domain.shared.ID
 import com.example.ec.domain.shared.Price
@@ -14,6 +15,7 @@ import java.time.LocalDateTime
  * @property totalAmount 合計金額
  * @property createdAt 作成日時
  * @property items 注文明細リスト（集約内に保持）
+ * @property attributes 注文属性値リスト（集約内に保持）
  */
 data class Order(
     val id: ID<Order>,
@@ -21,7 +23,8 @@ data class Order(
     val orderDate: LocalDateTime,
     val totalAmount: Price,
     val createdAt: LocalDateTime,
-    val items: List<OrderItem> = emptyList()
+    val items: List<OrderItem>,
+    val attributes: List<OrderAttributeValue>
 ) {
     /**
      * 注文明細リストから合計金額を計算する

@@ -14,12 +14,114 @@ tags:
     description: Customer management
   - name: orders
     description: Order management
+  - name: attributes
+    description: Order attribute definition management
   - name: export
     description: CSV export endpoints
   - name: admin
     description: Admin endpoints for data management (development/testing only)
 
 paths:
+  # Attribute Definition endpoints
+  /api/attribute-definitions:
+    get:
+      tags:
+        - attributes
+      summary: Get all attribute definitions
+      description: Get list of all order attribute definitions
+      operationId: listAttributeDefinitions
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AttributeDefinitionResponse'
+    post:
+      tags:
+        - attributes
+      summary: Create a new attribute definition
+      operationId: createAttributeDefinition
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAttributeDefinitionRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttributeDefinitionResponse'
+
+  /api/attribute-definitions/{id}:
+    get:
+      tags:
+        - attributes
+      summary: Get attribute definition by ID
+      operationId: getAttributeDefinition
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttributeDefinitionResponse'
+        '404':
+          description: Attribute definition not found
+    put:
+      tags:
+        - attributes
+      summary: Update attribute definition
+      operationId: updateAttributeDefinition
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAttributeDefinitionRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttributeDefinitionResponse'
+    delete:
+      tags:
+        - attributes
+      summary: Delete attribute definition
+      description: Delete attribute definition and all associated values (CASCADE)
+      operationId: deleteAttributeDefinition
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '204':
+          description: No content
+
   /api/orders/{orderId}:
     get:
       tags:
@@ -629,3 +731,66 @@ components:
         message:
           type: string
           description: Result message
+
+    # Attribute Definition API schemas
+    AttributeDefinitionResponse:
+      type: object
+      required:
+        - id
+        - name
+        - label
+        - createdAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+          description: Internal name (unique)
+        label:
+          type: string
+          description: Display label
+        description:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateAttributeDefinitionRequest:
+      type: object
+      required:
+        - name
+        - label
+      properties:
+        name:
+          type: string
+          maxLength: 100
+          description: Internal name (unique, e.g., gift_wrapping_type)
+        label:
+          type: string
+          maxLength: 100
+          description: Display label (e.g., Gift Wrapping Type)
+        description:
+          type: string
+          maxLength: 255
+          nullable: true
+
+    UpdateAttributeDefinitionRequest:
+      type: object
+      required:
+        - name
+        - label
+      properties:
+        name:
+          type: string
+          maxLength: 100
+          description: Internal name (unique)
+        label:
+          type: string
+          maxLength: 100
+          description: Display label
+        description:
+          type: string
+          maxLength: 255
+          nullable: true
