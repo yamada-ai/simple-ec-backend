@@ -5,6 +5,7 @@ import com.example.ec.domain.attribute.OrderAttributeDefinition
 import com.example.ec.domain.attribute.OrderAttributeValue
 import com.example.ec.domain.customer.Customer
 import com.example.ec.domain.order.Order
+import com.example.ec.domain.order.OrderAttributeJoinedRow
 import com.example.ec.domain.order.OrderExportRow
 import com.example.ec.domain.order.OrderItem
 import com.example.ec.domain.order.OrderRepository
@@ -16,6 +17,7 @@ import com.example.ec.infrastructure.jooq.tables.records.OrderItemRecord
 import com.example.ec.infrastructure.jooq.tables.records.OrderRecord
 import com.example.ec.infrastructure.jooq.tables.references.CUSTOMER
 import com.example.ec.infrastructure.jooq.tables.references.ORDER
+import com.example.ec.infrastructure.jooq.tables.references.ORDER_ATTRIBUTE_DEFINITION
 import com.example.ec.infrastructure.jooq.tables.references.ORDER_ATTRIBUTE_VALUE
 import com.example.ec.infrastructure.jooq.tables.references.ORDER_ITEM
 import org.jooq.Condition
@@ -308,21 +310,7 @@ class OrderRepositoryImpl(
         from: LocalDateTime?,
         to: LocalDateTime?
     ): Stream<OrderExportRow> {
-        val conditions = mutableListOf<Condition>()
-
-        from?.let {
-            conditions.add(ORDER.ORDER_DATE.greaterOrEqual(it))
-        }
-
-        to?.let {
-            conditions.add(ORDER.ORDER_DATE.lessOrEqual(it))
-        }
-
-        val whereCondition = if (conditions.isEmpty()) {
-            DSL.noCondition()
-        } else {
-            DSL.and(conditions)
-        }
+        val whereCondition = buildSearchCondition(from, to, null)
 
         // Order + Customer + OrderItem を1クエリで取得し、N+1を解消
         return dsl.select(
@@ -351,6 +339,46 @@ class OrderRepositoryImpl(
                     productName = record.get(ORDER_ITEM.PRODUCT_NAME)!!,
                     quantity = record.get(ORDER_ITEM.QUANTITY)!!,
                     unitPrice = record.get(ORDER_ITEM.UNIT_PRICE)!!
+                )
+            }
+    }
+
+    override fun streamOrdersWithAttributes(
+        from: LocalDateTime?,
+        to: LocalDateTime?
+    ): Stream<OrderAttributeJoinedRow> {
+        val whereCondition = buildSearchCondition(from, to, null)
+
+        return dsl.select(
+            ORDER.ID,
+            ORDER.CUSTOMER_ID,
+            CUSTOMER.NAME,
+            CUSTOMER.EMAIL,
+            ORDER.ORDER_DATE,
+            ORDER_ATTRIBUTE_VALUE.ATTRIBUTE_DEFINITION_ID,
+            ORDER_ATTRIBUTE_DEFINITION.NAME,
+            ORDER_ATTRIBUTE_DEFINITION.LABEL,
+            ORDER_ATTRIBUTE_VALUE.VALUE
+        )
+            .from(ORDER)
+            .join(CUSTOMER).on(CUSTOMER.ID.eq(ORDER.CUSTOMER_ID))
+            .leftJoin(ORDER_ATTRIBUTE_VALUE).on(ORDER_ATTRIBUTE_VALUE.ORDER_ID.eq(ORDER.ID))
+            .leftJoin(ORDER_ATTRIBUTE_DEFINITION)
+            .on(ORDER_ATTRIBUTE_DEFINITION.ID.eq(ORDER_ATTRIBUTE_VALUE.ATTRIBUTE_DEFINITION_ID))
+            .where(whereCondition)
+            .orderBy(ORDER.ID.asc(), ORDER_ATTRIBUTE_DEFINITION.ID.asc())
+            .fetchStream()
+            .map { record ->
+                OrderAttributeJoinedRow(
+                    orderId = record.get(ORDER.ID)!!,
+                    customerId = record.get(ORDER.CUSTOMER_ID)!!,
+                    customerName = record.get(CUSTOMER.NAME)!!,
+                    customerEmail = record.get(CUSTOMER.EMAIL)!!,
+                    orderDate = record.get(ORDER.ORDER_DATE)!!,
+                    definitionId = record.get(ORDER_ATTRIBUTE_VALUE.ATTRIBUTE_DEFINITION_ID),
+                    definitionName = record.get(ORDER_ATTRIBUTE_DEFINITION.NAME),
+                    definitionLabel = record.get(ORDER_ATTRIBUTE_DEFINITION.LABEL),
+                    value = record.get(ORDER_ATTRIBUTE_VALUE.VALUE)
                 )
             }
     }

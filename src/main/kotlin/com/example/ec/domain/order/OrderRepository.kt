@@ -90,4 +90,12 @@ interface OrderRepository {
         from: LocalDateTime?,
         to: LocalDateTime?
     ): Stream<OrderExportRow>
+
+    /**
+     * 属性値を含む注文のストリームを取得する（CSV動的列向け）
+     */
+    fun streamOrdersWithAttributes(
+        from: LocalDateTime?,
+        to: LocalDateTime?
+    ): Stream<OrderAttributeJoinedRow>
 }
