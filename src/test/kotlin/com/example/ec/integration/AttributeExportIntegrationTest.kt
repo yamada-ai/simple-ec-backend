@@ -35,9 +35,9 @@ class AttributeExportIntegrationTest(
     listOf(
         "join",
         "sequence-window",
-        "stream-window",
+        "spliterator-window",
         "multiset",
-        "spliterator-window"
+        "preload"
     ).forEach { strategy ->
         test("GET /api/export/orders/attributes ($strategy) returns expected CSV") {
             val response = restTemplate.getForEntity<String>("/api/export/orders/attributes?strategy=$strategy")

@@ -98,4 +98,28 @@ interface OrderRepository {
         from: LocalDateTime?,
         to: LocalDateTime?
     ): Stream<OrderAttributeJoinedRow>
+
+    /**
+     * preload 戦略用: 属性値を別取得する前提で、注文＋顧客のみをストリーミング取得
+     */
+    fun streamOrdersBase(
+        from: LocalDateTime?,
+        to: LocalDateTime?
+    ): Stream<OrderBaseRow>
+
+    /**
+        preload 用: 属性値を一括ロードしてメモリ Map で join するための取得
+     */
+    fun loadAttributeValueMap(
+        from: LocalDateTime?,
+        to: LocalDateTime?
+    ): Map<Long, Map<Long, String>>
+
+    /**
+        multiset 用: jOOQ multiset で注文ごとに属性リストをネストして取得
+     */
+    fun fetchOrdersWithAttributesMultiset(
+        from: LocalDateTime?,
+        to: LocalDateTime?
+    ): Stream<OrderWithAttributes>
 }

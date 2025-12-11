@@ -6,7 +6,6 @@ import com.example.ec.domain.order.OrderRepository
 import org.springframework.stereotype.Service
 import java.io.PrintWriter
 import java.time.LocalDateTime
-import java.util.Locale
 
 /**
  * 注文属性付きCSV出力のサービス（横展開）。
@@ -22,8 +21,8 @@ class OrderAttributeExportService(
         JOIN,
         MULTISET,
         SEQUENCE_WINDOW,
-        STREAM_WINDOW,
-        SPLITERATOR_WINDOW;
+        SPLITERATOR_WINDOW,
+        PRELOAD;
 
         companion object {
             fun from(value: String): AttributeExportStrategy =
@@ -46,7 +45,6 @@ class OrderAttributeExportService(
 
         when (exportStrategy) {
             AttributeExportStrategy.JOIN,
-            AttributeExportStrategy.STREAM_WINDOW,
             AttributeExportStrategy.SPLITERATOR_WINDOW -> {
                 orderRepository.streamOrdersWithAttributes(from, to).use { stream ->
                     writeWindowed(definitionIds, stream.iterator(), writer)
@@ -60,8 +58,26 @@ class OrderAttributeExportService(
             }
 
             AttributeExportStrategy.MULTISET -> {
-                orderRepository.streamOrdersWithAttributes(from, to).use { stream ->
+                orderRepository.fetchOrdersWithAttributesMultiset(from, to).use { stream ->
                     writeMultiset(definitionIds, stream, writer)
+                }
+            }
+
+            AttributeExportStrategy.PRELOAD -> {
+                val attrMap = orderRepository.loadAttributeValueMap(from, to)
+                orderRepository.streamOrdersBase(from, to).use { stream ->
+                    stream.forEach { base ->
+                        val values = definitionIds.map { defId -> attrMap[base.orderId]?.get(defId) ?: "" }
+                        writer.println(
+                            listOf(
+                                base.orderId.toString(),
+                                base.customerId.toString(),
+                                base.customerName,
+                                base.customerEmail,
+                                base.orderDate.toString()
+                            ).plus(values).joinToString(",")
+                        )
+                    }
                 }
             }
         }
@@ -117,24 +133,19 @@ class OrderAttributeExportService(
 
     private fun writeMultiset(
         definitionIds: List<Long>,
-        stream: java.util.stream.Stream<OrderAttributeJoinedRow>,
+        stream: java.util.stream.Stream<com.example.ec.domain.order.OrderWithAttributes>,
         writer: PrintWriter
     ) {
-        val grouped = stream.toList().groupBy { it.orderId }
-        grouped.toSortedMap().forEach { (_, rows) ->
-            if (rows.isEmpty()) return@forEach
-            val base = rows.first()
-            val valueMap = rows
-                .filter { it.definitionId != null && it.value != null }
-                .associate { it.definitionId!! to it.value!! }
+        stream.forEach { order ->
+            val valueMap = order.attributes.associate { it.attributeDefinitionId.value to it.value }
             val values = definitionIds.map { valueMap[it] ?: "" }
             writer.println(
                 listOf(
-                    base.orderId.toString(),
-                    base.customerId.toString(),
-                    base.customerName,
-                    base.customerEmail,
-                    base.orderDate.toString()
+                    order.orderId.toString(),
+                    order.customerId.toString(),
+                    order.customerName,
+                    order.customerEmail,
+                    order.orderDate.toString()
                 ).plus(values).joinToString(",")
             )
         }
