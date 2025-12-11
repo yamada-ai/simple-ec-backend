@@ -22,9 +22,11 @@ class AttributeExportIntegrationTest(
 ) : IntegrationSpec({
 
     val expected = """
-        order_id,customer_id,customer_name,customer_email,order_date,ギフト包装,配送指示
-        10,1,Customer 1,c1@example.com,2024-02-01T10:00,あり,置き配希望
-        11,2,Customer 2,c2@example.com,2024-02-02T12:00,なし,
+        order_id,customer_id,customer_name,customer_email,order_date,ギフト包装,配送指示,備考
+        10,1,Customer 1,c1@example.com,2024-02-01T10:00,あり,置き配希望,
+        11,2,Customer 2,c2@example.com,2024-02-02T12:00,なし,,要電話連絡
+        12,1,Customer 1,c1@example.com,2024-02-03T15:00,,時間指定なし,
+        13,2,Customer 2,c2@example.com,2024-02-04T18:00,,,
     """.trimIndent() + "\n"
 
     beforeEach {
