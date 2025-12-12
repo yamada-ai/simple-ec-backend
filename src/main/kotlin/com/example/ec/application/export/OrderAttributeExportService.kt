@@ -3,6 +3,7 @@ package com.example.ec.application.export
 import com.example.ec.domain.attribute.OrderAttributeDefinitionRepository
 import com.example.ec.domain.order.OrderAttributeJoinedRow
 import com.example.ec.domain.order.OrderRepository
+import java.util.stream.StreamSupport
 import org.springframework.stereotype.Service
 import java.io.PrintWriter
 import java.time.LocalDateTime
@@ -30,6 +31,7 @@ class OrderAttributeExportService(
         }
     }
 
+    @Suppress("NestedBlockDepth") // 戦略ごとの分岐が多いため抑制
     fun writeCsv(
         from: LocalDateTime?,
         to: LocalDateTime?,
@@ -47,7 +49,13 @@ class OrderAttributeExportService(
             AttributeExportStrategy.JOIN,
             AttributeExportStrategy.SPLITERATOR_WINDOW -> {
                 orderRepository.streamOrdersWithAttributes(from, to).use { stream ->
-                    writeWindowed(definitionIds, stream.iterator(), writer)
+                    if (exportStrategy == AttributeExportStrategy.SPLITERATOR_WINDOW) {
+                        val spliterator = OrderAttributeWindowSpliterator(stream.iterator(), definitionIds)
+                        StreamSupport.stream(spliterator, false)
+                            .forEach { row -> writer.println(row.joinToString(",")) }
+                    } else {
+                        writeWindowed(definitionIds, stream.iterator(), writer)
+                    }
                 }
             }
 

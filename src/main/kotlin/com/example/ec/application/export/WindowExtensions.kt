@@ -5,6 +5,18 @@ import com.example.ec.domain.order.OrderAttributeJoinedRow
 /**
  * orderId が切り替わるタイミングで横展開した列リストを emit する Sequence 拡張。
  */
+internal fun buildCsvRow(
+    base: OrderAttributeJoinedRow,
+    values: List<String>
+): List<String> =
+    listOf(
+        base.orderId.toString(),
+        base.customerId.toString(),
+        base.customerName,
+        base.customerEmail,
+        base.orderDate.toString()
+    ).plus(values)
+
 fun Sequence<OrderAttributeJoinedRow>.windowByOrderId(
     definitionIds: List<Long>
 ): Sequence<List<String>> = sequence {
@@ -36,18 +48,6 @@ fun Sequence<OrderAttributeJoinedRow>.windowByOrderId(
     val base = currentRow
     if (base != null) {
         val values = definitionIds.map { defId -> valueMap[defId] ?: "" }
-        yield(buildRow(base, values))
+        yield(buildCsvRow(base, values))
     }
 }
-
-private fun buildRow(
-    base: OrderAttributeJoinedRow,
-    values: List<String>
-): List<String> =
-    listOf(
-        base.orderId.toString(),
-        base.customerId.toString(),
-        base.customerName,
-        base.customerEmail,
-        base.orderDate.toString()
-    ).plus(values)
