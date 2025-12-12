@@ -26,18 +26,22 @@ fun Sequence<OrderAttributeJoinedRow>.windowByOrderId(
     val valueMap = mutableMapOf<Long, String>()
 
     for (row in this@windowByOrderId) {
-        if (currentOrderId == null) {
-            currentOrderId = row.orderId
-            currentRow = row
-        } else if (currentOrderId != row.orderId) {
-            val base = currentRow
-            if (base != null) {
-                val values = definitionIds.map { defId -> valueMap[defId] ?: "" }
-                yield(buildRow(base, values))
-                valueMap.clear()
+        when {
+            currentOrderId == null -> {
+                currentOrderId = row.orderId
+                currentRow = row
             }
-            currentOrderId = row.orderId
-            currentRow = row
+            
+            currentOrderId != row.orderId -> {
+                val base = currentRow
+                if (base != null) {
+                    val values = definitionIds.map { defId -> valueMap[defId] ?: "" }
+                    yield(buildCsvRow(base, values))
+                    valueMap.clear()
+                }
+                currentOrderId = row.orderId
+                currentRow = row
+            }
         }
 
         if (row.definitionId != null && row.value != null) {

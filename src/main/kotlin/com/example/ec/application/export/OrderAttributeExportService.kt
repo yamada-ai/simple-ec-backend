@@ -31,7 +31,7 @@ class OrderAttributeExportService(
         }
     }
 
-    @Suppress("NestedBlockDepth") // 戦略ごとの分岐が多いため抑制
+    @Suppress("NestedBlockDepth", "CyclomaticComplexMethod") // 戦略分岐を1箇所に集約しているため抑制
     fun writeCsv(
         from: LocalDateTime?,
         to: LocalDateTime?,
@@ -46,16 +46,17 @@ class OrderAttributeExportService(
         writeHeader(definitionLabels, writer)
 
         when (exportStrategy) {
-            AttributeExportStrategy.JOIN,
+            AttributeExportStrategy.JOIN -> {
+                orderRepository.streamOrdersWithAttributes(from, to).use { stream ->
+                    writeWindowed(definitionIds, stream.iterator(), writer)
+                }
+            }
+
             AttributeExportStrategy.SPLITERATOR_WINDOW -> {
                 orderRepository.streamOrdersWithAttributes(from, to).use { stream ->
-                    if (exportStrategy == AttributeExportStrategy.SPLITERATOR_WINDOW) {
-                        val spliterator = OrderAttributeWindowSpliterator(stream.iterator(), definitionIds)
-                        StreamSupport.stream(spliterator, false)
-                            .forEach { row -> writer.println(row.joinToString(",")) }
-                    } else {
-                        writeWindowed(definitionIds, stream.iterator(), writer)
-                    }
+                    val spliterator = OrderAttributeWindowSpliterator(stream.iterator(), definitionIds)
+                    StreamSupport.stream(spliterator, false)
+                        .forEach { row -> writer.println(row.joinToString(",")) }
                 }
             }
 
