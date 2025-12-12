@@ -53,7 +53,11 @@ class OrderAttributeExportService(
 
             AttributeExportStrategy.SEQUENCE_WINDOW -> {
                 orderRepository.streamOrdersWithAttributes(from, to).use { stream ->
-                    writeWindowed(definitionIds, stream.iterator().asSequence().iterator(), writer)
+                    stream.iterator().asSequence()
+                        .windowByOrderId(definitionIds)
+                        .forEach { columns ->
+                            writer.println(columns.joinToString(","))
+                        }
                 }
             }
 
@@ -94,41 +98,11 @@ class OrderAttributeExportService(
         iterator: Iterator<OrderAttributeJoinedRow>,
         writer: PrintWriter
     ) {
-        var currentOrderId: Long? = null
-        var currentRow: OrderAttributeJoinedRow? = null
-        val valueMap = mutableMapOf<Long, String>()
-
-        fun flush() {
-            val base = currentRow ?: return
-            val values = definitionIds.map { defId -> valueMap[defId] ?: "" }
-            writer.println(
-                listOf(
-                    base.orderId.toString(),
-                    base.customerId.toString(),
-                    base.customerName,
-                    base.customerEmail,
-                    base.orderDate.toString()
-                ).plus(values).joinToString(",")
-            )
-            valueMap.clear()
-        }
-
-        iterator.forEach { row ->
-            if (currentOrderId == null) {
-                currentOrderId = row.orderId
-                currentRow = row
-            } else if (currentOrderId != row.orderId) {
-                flush()
-                currentOrderId = row.orderId
-                currentRow = row
+        iterator.asSequence()
+            .windowByOrderId(definitionIds)
+            .forEach { columns ->
+                writer.println(columns.joinToString(","))
             }
-
-            if (row.definitionId != null && row.value != null) {
-                valueMap[row.definitionId] = row.value
-            }
-        }
-
-        flush()
     }
 
     private fun writeMultiset(

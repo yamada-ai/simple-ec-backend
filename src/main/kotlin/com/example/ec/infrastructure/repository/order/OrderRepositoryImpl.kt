@@ -391,7 +391,7 @@ class OrderRepositoryImpl(
 
     private fun mapToOrderWithAttributes(record: Record): OrderWithAttributes {
         @Suppress("UNCHECKED_CAST")
-        val attrs = record.get(5) as List<OrderAttributeValue>? ?: emptyList()
+        val attrs = record.get(ATTRIBUTES_MULTISET_INDEX) as List<OrderAttributeValue>? ?: emptyList()
         return OrderWithAttributes(
             orderId = record.get(ORDER.ID)!!,
             customerId = record.get(ORDER.CUSTOMER_ID)!!,
@@ -400,6 +400,10 @@ class OrderRepositoryImpl(
             orderDate = record.get(ORDER.ORDER_DATE)!!,
             attributes = attrs
         )
+    }
+
+    companion object {
+        private const val ATTRIBUTES_MULTISET_INDEX = 5
     }
 
     override fun streamOrdersWithAttributes(

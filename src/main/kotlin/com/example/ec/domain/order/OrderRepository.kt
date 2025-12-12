@@ -9,6 +9,7 @@ import java.util.stream.Stream
 /**
  * 注文リポジトリインターフェース
  */
+@Suppress("TooManyFunctions") // 戦略ごとの取得手段を提供するため、関数数が多い
 interface OrderRepository {
     /**
      * 注文IDで注文を取得する
