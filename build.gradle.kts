@@ -47,12 +47,14 @@ dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-jooq")
 	implementation("org.springframework.boot:spring-boot-starter-web")
 	implementation("org.springframework.boot:spring-boot-starter-validation")
+	implementation("org.springframework.boot:spring-boot-starter-actuator")
 	implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
 	implementation("org.flywaydb:flyway-core:10.21.0")
 	implementation("org.flywaydb:flyway-database-postgresql:10.21.0")
 	implementation("org.jetbrains.kotlin:kotlin-reflect")
 	implementation("org.postgresql:postgresql:42.7.4")
 	jooqGenerator("org.postgresql:postgresql:42.7.4")
+	implementation("io.micrometer:micrometer-registry-prometheus")
 
 	// OpenAPI annotations
 	implementation("io.swagger.core.v3:swagger-annotations:2.2.27")
