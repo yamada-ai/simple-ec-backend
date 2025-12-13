@@ -1,9 +1,11 @@
 package com.example.ec.application.export
 
 import com.example.ec.domain.attribute.OrderAttributeDefinitionRepository
-import com.example.ec.domain.order.OrderAttributeJoinedRow
 import com.example.ec.domain.order.OrderRepository
+import org.apache.commons.csv.CSVFormat
+import org.apache.commons.csv.CSVPrinter
 import java.util.stream.StreamSupport
+import kotlin.streams.asSequence
 import org.springframework.stereotype.Service
 import java.io.PrintWriter
 import java.time.LocalDateTime
@@ -19,15 +21,16 @@ class OrderAttributeExportService(
 ) {
 
     enum class AttributeExportStrategy {
-        JOIN,
         MULTISET,
         SEQUENCE_WINDOW,
         SPLITERATOR_WINDOW,
         PRELOAD;
 
         companion object {
-            fun from(value: String): AttributeExportStrategy =
-                entries.firstOrNull { it.name.equals(value, ignoreCase = true) } ?: JOIN
+            fun from(value: String): AttributeExportStrategy {
+                val normalized = value.replace("-", "_").uppercase()
+                return entries.firstOrNull { it.name == normalized } ?: SEQUENCE_WINDOW
+            }
         }
     }
 
@@ -38,41 +41,38 @@ class OrderAttributeExportService(
         strategy: String,
         writer: PrintWriter
     ) {
-        val definitions = definitionRepository.findAll()
+        val definitions = definitionRepository.findAll().sortedBy { it.id.value }
         val definitionIds = definitions.map { it.id.value }
         val definitionLabels = definitions.map { it.label }
         val exportStrategy = AttributeExportStrategy.from(strategy)
+        val csvPrinter = CSVPrinter(writer, csvFormat)
 
-        writeHeader(definitionLabels, writer)
+        writeHeader(definitionLabels, csvPrinter)
 
         when (exportStrategy) {
-            AttributeExportStrategy.JOIN -> {
-                orderRepository.streamOrdersWithAttributes(from, to).use { stream ->
-                    writeWindowed(definitionIds, stream.iterator(), writer)
-                }
-            }
-
+            // SPLITERATOR_WINDOW: Streamの世界のまま「1要素=1注文」に昇格させる（低レイヤ寄り）
             AttributeExportStrategy.SPLITERATOR_WINDOW -> {
                 orderRepository.streamOrdersWithAttributes(from, to).use { stream ->
-                    val spliterator = OrderAttributeWindowSpliterator(stream.iterator(), definitionIds)
+                    val spliterator = OrderAttributeWindowSpliterator(stream.spliterator())
                     StreamSupport.stream(spliterator, false)
-                        .forEach { row -> writer.println(row.joinToString(",")) }
+                        .forEach { row -> csvPrinter.printRecord(row.toRecord(definitionIds)) }
                 }
             }
 
+            // SEQUENCE_WINDOW: Kotlin Sequence の lazy パイプラインとして窓処理を表現する（高レイヤ寄り）
             AttributeExportStrategy.SEQUENCE_WINDOW -> {
                 orderRepository.streamOrdersWithAttributes(from, to).use { stream ->
-                    stream.iterator().asSequence()
-                        .windowByOrderId(definitionIds)
-                        .forEach { columns ->
-                            writer.println(columns.joinToString(","))
+                    stream.asSequence()
+                        .windowByOrderId()
+                        .forEach { row ->
+                            csvPrinter.printRecord(row.toRecord(definitionIds))
                         }
                 }
             }
 
             AttributeExportStrategy.MULTISET -> {
                 orderRepository.fetchOrdersWithAttributesMultiset(from, to).use { stream ->
-                    writeMultiset(definitionIds, stream, writer)
+                    writeMultiset(definitionIds, stream, csvPrinter)
                 }
             }
 
@@ -80,57 +80,50 @@ class OrderAttributeExportService(
                 val attrMap = orderRepository.loadAttributeValueMap(from, to)
                 orderRepository.streamOrdersBase(from, to).use { stream ->
                     stream.forEach { base ->
-                        val values = definitionIds.map { defId -> attrMap[base.orderId]?.get(defId) ?: "" }
-                        writer.println(
-                            listOf(
-                                base.orderId.toString(),
-                                base.customerId.toString(),
-                                base.customerName,
-                                base.customerEmail,
-                                base.orderDate.toString()
-                            ).plus(values).joinToString(",")
+                        val row = OrderAttributeCsvRow(
+                            orderId = base.orderId,
+                            customerId = base.customerId,
+                            customerName = base.customerName,
+                            customerEmail = base.customerEmail,
+                            orderDate = base.orderDate,
+                            attributes = attrMap[base.orderId] ?: emptyMap()
                         )
+                        csvPrinter.printRecord(row.toRecord(definitionIds))
                     }
                 }
             }
         }
+
+        csvPrinter.flush()
     }
 
-    private fun writeHeader(attributeLabels: List<String>, writer: PrintWriter) {
+    private fun writeHeader(attributeLabels: List<String>, printer: CSVPrinter) {
         val base = listOf("order_id", "customer_id", "customer_name", "customer_email", "order_date")
-        val header = (base + attributeLabels).joinToString(",")
-        writer.println(header)
-    }
-
-    private fun writeWindowed(
-        definitionIds: List<Long>,
-        iterator: Iterator<OrderAttributeJoinedRow>,
-        writer: PrintWriter
-    ) {
-        iterator.asSequence()
-            .windowByOrderId(definitionIds)
-            .forEach { columns ->
-                writer.println(columns.joinToString(","))
-            }
+        printer.printRecord(base + attributeLabels)
     }
 
     private fun writeMultiset(
         definitionIds: List<Long>,
         stream: java.util.stream.Stream<com.example.ec.domain.order.OrderWithAttributes>,
-        writer: PrintWriter
+        printer: CSVPrinter
     ) {
         stream.forEach { order ->
             val valueMap = order.attributes.associate { it.attributeDefinitionId.value to it.value }
-            val values = definitionIds.map { valueMap[it] ?: "" }
-            writer.println(
-                listOf(
-                    order.orderId.toString(),
-                    order.customerId.toString(),
-                    order.customerName,
-                    order.customerEmail,
-                    order.orderDate.toString()
-                ).plus(values).joinToString(",")
+            val row = OrderAttributeCsvRow(
+                orderId = order.orderId,
+                customerId = order.customerId,
+                customerName = order.customerName,
+                customerEmail = order.customerEmail,
+                orderDate = order.orderDate,
+                attributes = valueMap
             )
+            printer.printRecord(row.toRecord(definitionIds))
         }
+    }
+
+    companion object {
+        private val csvFormat: CSVFormat = CSVFormat.DEFAULT.builder()
+            .setRecordSeparator("\n")
+            .build()
     }
 }

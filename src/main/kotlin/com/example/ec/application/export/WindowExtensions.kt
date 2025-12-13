@@ -3,55 +3,42 @@ package com.example.ec.application.export
 import com.example.ec.domain.order.OrderAttributeJoinedRow
 
 /**
- * orderId が切り替わるタイミングで横展開した列リストを emit する Sequence 拡張。
+ * orderId 境界で窓を切り、「1注文=1要素」にまとめて OrderAttributeCsvRow を yield する。
+ *
+ * 前提: 入力は orderId 昇順（できれば definitionId 昇順）。
+ * - この前提が崩れると、同じ注文が分断されて誤った集約になる。
+ *
+ * 特性:
+ * - 1注文あたり O(定義数) ではなく、実際は「その注文に存在する属性数」だけを保持する。
+ * - 各注文の属性Mapは *コピーせず*、注文境界で新しいMapに差し替える（無駄な allocation を避ける）。
  */
-internal fun buildCsvRow(
-    base: OrderAttributeJoinedRow,
-    values: List<String>
-): List<String> =
-    listOf(
-        base.orderId.toString(),
-        base.customerId.toString(),
-        base.customerName,
-        base.customerEmail,
-        base.orderDate.toString()
-    ).plus(values)
-
-fun Sequence<OrderAttributeJoinedRow>.windowByOrderId(
-    definitionIds: List<Long>
-): Sequence<List<String>> = sequence {
-    // orderId が同じ間は valueMap に属性値を貯め、orderId が変わるタイミングで横展開行を yield する
+fun Sequence<OrderAttributeJoinedRow>.windowByOrderId(): Sequence<OrderAttributeCsvRow> = sequence {
     var currentOrderId: Long? = null
-    var currentRow: OrderAttributeJoinedRow? = null
-    val valueMap = mutableMapOf<Long, String>()
+    var currentBase: OrderAttributeJoinedRow? = null
+
+    // 注文ごとに差し替える。clear しない（= yield 済みの Map を汚さない & コピーしない）
+    var attrMap: MutableMap<Long, String> = linkedMapOf()
+
+    suspend fun SequenceScope<OrderAttributeCsvRow>.flush() {
+        val base = currentBase ?: return
+        yield(OrderAttributeCsvRow.from(base, attrMap))
+        attrMap = linkedMapOf()
+    }
 
     for (row in this@windowByOrderId) {
-        when {
-            currentOrderId == null -> {
-                currentOrderId = row.orderId
-                currentRow = row
-            }
-            
-            currentOrderId != row.orderId -> {
-                val base = currentRow
-                if (base != null) {
-                    val values = definitionIds.map { defId -> valueMap[defId] ?: "" }
-                    yield(buildCsvRow(base, values))
-                    valueMap.clear()
-                }
-                currentOrderId = row.orderId
-                currentRow = row
-            }
+        if (currentOrderId == null) {
+            currentOrderId = row.orderId
+            currentBase = row
+        } else if (currentOrderId != row.orderId) {
+            flush()
+            currentOrderId = row.orderId
+            currentBase = row
         }
 
-        if (row.definitionId != null && row.value != null) {
-            valueMap[row.definitionId] = row.value
+        row.definitionId?.let { defId ->
+            row.value?.let { v -> attrMap[defId] = v }
         }
     }
 
-    val base = currentRow
-    if (base != null) {
-        val values = definitionIds.map { defId -> valueMap[defId] ?: "" }
-        yield(buildCsvRow(base, values))
-    }
+    flush()
 }

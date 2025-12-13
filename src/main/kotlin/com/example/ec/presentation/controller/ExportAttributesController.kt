@@ -28,7 +28,7 @@ class ExportAttributesController(
     fun exportOrderAttributes(
         @RequestParam(required = false) startDate: OffsetDateTime?,
         @RequestParam(required = false) endDate: OffsetDateTime?,
-        @RequestParam(required = false, defaultValue = "join") strategy: String
+        @RequestParam(required = false, defaultValue = "sequence-window") strategy: String
     ): ResponseEntity<Resource> {
         val from = startDate?.atZoneSameInstant(ZoneId.systemDefault())?.toLocalDateTime()
         val to = endDate?.atZoneSameInstant(ZoneId.systemDefault())?.toLocalDateTime()
