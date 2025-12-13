@@ -10,6 +10,10 @@ COPY src src
 COPY docs docs
 COPY compose.yaml compose.yaml
 COPY docker docker
+ENV SPRING_PROFILES_ACTIVE=docker
+ENV SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/simple_ec
+ENV SPRING_DATASOURCE_USERNAME=postgres
+ENV SPRING_DATASOURCE_PASSWORD=postgres
 RUN ./gradlew clean bootJar -x test
 
 # Run stage
