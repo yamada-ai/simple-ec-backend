@@ -10,11 +10,21 @@ COPY src src
 COPY docs docs
 COPY compose.yaml compose.yaml
 COPY docker docker
+ARG USE_PREBUILT_JAR=true
+ARG BOOTJAR_GLOB=build/libs/*.jar
 ENV SPRING_PROFILES_ACTIVE=docker
 ENV SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/simple_ec
 ENV SPRING_DATASOURCE_USERNAME=postgres
 ENV SPRING_DATASOURCE_PASSWORD=postgres
-RUN ./gradlew clean bootJar -x test -x flywayMigrate -x generateJooq
+
+# すでに build/libs/*.jar がある場合はそれを使い、無ければビルドする
+RUN if [ "$USE_PREBUILT_JAR" = "true" ] && compgen -G "$BOOTJAR_GLOB" > /dev/null; then \
+      echo "Using prebuilt bootJar: $BOOTJAR_GLOB"; \
+      cp $BOOTJAR_GLOB /app/app.jar; \
+    else \
+      ./gradlew clean bootJar -x test -x flywayMigrate -x generateJooq; \
+      cp build/libs/*.jar /app/app.jar; \
+    fi
 
 # Run stage
 FROM eclipse-temurin:21-jre
