@@ -44,13 +44,14 @@ Stream/Sequenceは**join機構を持たない**。この制約下で以下の問
 | **Stream mapMulti** | `mapMulti` (Java 16+) | Push (遅延) | Consumer直接 | ⭐⭐⭐ |
 | **Spliterator** | カスタムSpliterator | Pull (制御可能) | 手動管理 | ⭐⭐⭐ |
 
-### Phase 2: 列展開パターン（動的Order Attributes）
+### Phase 2: 列展開パターン（動的Order Attributes）✅ 実装済み
 
-| Strategy | 実装方法 | 動的列の扱い | メモリ効率 | 実装難易度 |
+| Strategy | 実装方法 | 動的列の扱い | メモリ効率 | 実測 (30k orders × 15 attrs) |
 |----------|---------|------------|-----------|----------|
-| **Map事前取得** | 全属性値をMapに格納 | 簡単 | ⭐ (全データメモリ展開) | ⭐ (簡単) |
-| **Multiset** | jOOQのmultiset機能 | 中程度 | ⭐⭐ (件数増で劣化) | ⭐⭐ |
-| **Sequence窓処理** | WindowingでGroup化 | 難しい | ⭐⭐⭐ (ストリーミング) | ⭐⭐⭐ |
+| **preload** | 全属性値をMapに格納 | 簡単 | ⭐ (全データメモリ展開) | 0.41s ⚡ |
+| **multiset** | jOOQのmultiset機能 | 中程度 | ⭐⭐ (件数増で劣化) | 1.22s |
+| **sequence-window** | Sequence + Windowing | 難しい | ⭐⭐⭐ (ストリーミング) | 0.80s ✅ 推奨 |
+| **spliterator-window** | カスタムSpliterator + Windowing | 難しい | ⭐⭐⭐ (ストリーミング) | 0.74s |
 
 ### 検証環境条件
 
@@ -82,7 +83,7 @@ Stream/Sequenceは**join機構を持たない**。この制約下で以下の問
 - **Kotest** (テスト)
 - **Detekt** (静的解析)
 - **OpenAPI Generator** (API スキーマ駆動開発)
-- **Apache Commons CSV** 1.12.0 (CSV生成、予定)
+- **Apache Commons CSV** 1.12.0 (CSV生成)
 
 ## 🗄 DB構成
 
@@ -145,8 +146,22 @@ Admin API でテストデータを投入・削除できます（実験用機能�
 ### データ投入
 
 ```bash
-# 100 顧客、1000 注文、約 5000 明細を生成
+# 基本: 100 顧客、1000 注文を生成
 curl -X POST "http://localhost:8080/admin/seed?customers=100&orders=1000"
+
+# 属性付き: 100 顧客、1000 注文、15 属性定義を生成（Phase 2 用）
+curl -X POST "http://localhost:8080/admin/seed?customers=100&orders=1000&attrs=15"
+
+# 再現可能なデータ: seed パラメータで固定
+curl -X POST "http://localhost:8080/admin/seed?customers=100&orders=1000&attrs=15&seed=42"
+```
+
+### データ確認
+
+```bash
+# 現在のデータ件数を確認
+curl "http://localhost:8080/admin/summary"
+# => {"customers":100,"orders":1000,"orderItems":~5000,"attributeDefinitions":15}
 ```
 
 ### データ削除
@@ -155,9 +170,26 @@ curl -X POST "http://localhost:8080/admin/seed?customers=100&orders=1000"
 curl -X DELETE "http://localhost:8080/admin/truncate"
 ```
 
+### ベンチマーク用データ投入（スクリプト版）
+
+大量データでのパフォーマンス検証用：
+
+```bash
+# デフォルト: 5,000 注文 × 15 属性
+./scripts/bench/seed_benchmark_dataset.sh
+
+# カスタム: 30,000 注文 × 15 属性
+./scripts/bench/seed_benchmark_dataset.sh 30000 15
+
+# 環境変数で指定
+ORDERS=10000 ATTRS=20 SEED=999 ./scripts/bench/seed_benchmark_dataset.sh
+```
+
+詳細は [`scripts/bench/README.md`](scripts/bench/README.md) を参照。
+
 ## 実験用 API
 
-### CSV エクスポート（メインの実験対象）
+### Phase 1: CSV エクスポート（Order → OrderItem 行展開）✅ 実装済み
 
 ```bash
 # Kotlin Sequence 版
@@ -172,6 +204,42 @@ curl "http://localhost:8080/api/export/orders?strategy=stream-mapmulti" > orders
 # カスタム Spliterator 版
 curl "http://localhost:8080/api/export/orders?strategy=spliterator" > orders_spliterator.csv
 ```
+
+### Phase 2: CSV エクスポート（動的属性列展開）✅ 実装済み
+
+```bash
+# Map 事前ロード版（最速だがメモリ消費大）
+curl "http://localhost:8080/api/export/orders/attributes?strategy=preload" > orders_preload.csv
+
+# jOOQ multiset 版
+curl "http://localhost:8080/api/export/orders/attributes?strategy=multiset" > orders_multiset.csv
+
+# Sequence + Windowing 版（推奨：メモリ効率とパフォーマンスのバランス）
+curl "http://localhost:8080/api/export/orders/attributes?strategy=sequence-window" > orders_sequence.csv
+
+# Spliterator + Windowing 版
+curl "http://localhost:8080/api/export/orders/attributes?strategy=spliterator-window" > orders_spliterator.csv
+```
+
+### ベンチマーク実行（自動化スクリプト）
+
+4戦略を一括実行してパフォーマンス比較：
+
+```bash
+# デフォルト: 5,000 注文 × 15 属性、各戦略でウォームアップ2回 + 計測3回
+./scripts/bench/run_benchmark.sh
+
+# 大量データ: 30,000 注文 × 15 属性
+ORDERS=30000 ATTRS=15 ./scripts/bench/run_benchmark.sh
+
+# 特定戦略のみ実行
+STRATEGIES="preload sequence-window" ./scripts/bench/run_benchmark.sh
+
+# データ投入をスキップ（2回目以降は自動判定）
+SKIP_SEED=1 ./scripts/bench/run_benchmark.sh
+```
+
+結果は `docs/benchmark/runs/` に保存されます。詳細は [`scripts/bench/README.md`](scripts/bench/README.md) を参照。
 
 ## プロジェクト構成
 
@@ -234,16 +302,29 @@ docker ps | grep simple-ec-postgres
 - `compose.yaml`でポート番号を変更
 - `application.yaml`と`build.gradle.kts`のJDBC URLも同様に変更
 
-## 📝 TODO
+## 📝 実装状況
 
-- [ ] Admin API 実装（データ投入・削除）
-- [ ] CRUD API 実装（Customer, Order, OrderItem）
-- [ ] CSV エクスポート実装
-  - [ ] Kotlin Sequence 版
-  - [ ] Java Stream (flatMap) 版
-  - [ ] Java Stream (mapMulti) 版
-  - [ ] カスタム Spliterator 版
-- [ ] パフォーマンス計測用テスト
+### 完了 ✅
+
+- [x] Admin API 実装（seed, truncate, summary）
+- [x] Phase 1: CSV エクスポート（Order → OrderItem 行展開）
+  - [x] Kotlin Sequence 版
+  - [x] Java Stream (flatMap) 版
+  - [x] Java Stream (mapMulti) 版
+  - [x] カスタム Spliterator 版
+- [x] Phase 2: CSV エクスポート（動的属性列展開）
+  - [x] Map 事前ロード版（preload）
+  - [x] jOOQ multiset 版
+  - [x] Sequence + Windowing 版（sequence-window）
+  - [x] Spliterator + Windowing 版（spliterator-window）
+- [x] Order Attributes CRUD API（属性定義・属性値）
+- [x] ベンチマーク自動化スクリプト（`scripts/bench/`）
+- [x] パフォーマンス計測・比較（実測結果付き）
+
+### 今後の拡張案
+
+- [ ] Observability 強化（Prometheus/Grafana ダッシュボード）
+- [ ] 他のエクスポート形式（JSON, Excel）
 - [ ] フロントエンド（オプション）
 
 ## 📖 参考資料
