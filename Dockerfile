@@ -14,7 +14,7 @@ ENV SPRING_PROFILES_ACTIVE=docker
 ENV SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/simple_ec
 ENV SPRING_DATASOURCE_USERNAME=postgres
 ENV SPRING_DATASOURCE_PASSWORD=postgres
-RUN ./gradlew clean bootJar -x test
+RUN ./gradlew clean bootJar -x test -x flywayMigrate
 
 # Run stage
 FROM eclipse-temurin:21-jre

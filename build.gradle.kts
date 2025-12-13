@@ -134,7 +134,10 @@ jooq {
 
 tasks.named<nu.studer.gradle.jooq.JooqGenerate>("generateJooq") {
 	allInputsDeclared.set(false)
-	dependsOn("flywayMigrate")
+	// Docker ビルドなど DB なし環境でも codegen できるように、Flyway 実行は明示指定時のみ
+	if (project.hasProperty("runFlyway")) {
+		dependsOn("flywayMigrate")
+	}
 }
 
 detekt {
@@ -183,8 +186,9 @@ tasks.named("compileKotlin") {
 }
 
 flyway {
-	url = "jdbc:postgresql://localhost:5433/simple_ec"
-	user = "postgres"
-	password = "postgres"
+	// 環境変数を優先し、未指定時のみデフォルト(localhost)にフォールバック
+	url = System.getenv("SPRING_DATASOURCE_URL") ?: "jdbc:postgresql://localhost:5433/simple_ec"
+	user = System.getenv("SPRING_DATASOURCE_USERNAME") ?: "postgres"
+	password = System.getenv("SPRING_DATASOURCE_PASSWORD") ?: "postgres"
 	locations = arrayOf("filesystem:src/main/resources/db/migration")
 }
