@@ -123,7 +123,8 @@ jooq {
 					}
 					target.apply {
 						packageName = "com.example.ec.infrastructure.jooq"
-						directory = "build/generated-src/jooq/main"
+						// コミット可能な場所に生成し、Docker build が外部DBに依存しないようにする
+						directory = "src/main/generated/jooq"
 					}
 					strategy.name = "org.jooq.codegen.DefaultGeneratorStrategy"
 				}
@@ -159,7 +160,7 @@ tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
 openApiGenerate {
 	generatorName.set("kotlin-spring")
 	inputSpec.set("$rootDir/src/main/resources/openapi/api.yaml")
-	outputDir.set("$buildDir/generated/openapi")
+	outputDir.set("$rootDir/src/main/generated/openapi")
 	apiPackage.set("com.example.ec.presentation.api")
 	modelPackage.set("com.example.ec.presentation.model")
 	configOptions.set(mapOf(
@@ -174,10 +175,10 @@ openApiGenerate {
 sourceSets {
 	main {
 		java {
-			srcDir("build/generated-src/jooq/main")
+			srcDir("src/main/generated/jooq")
 		}
 		kotlin {
-			srcDir("$buildDir/generated/openapi/src/main/kotlin")
+			srcDir("$rootDir/src/main/generated/openapi/src/main/kotlin")
 		}
 	}
 }
