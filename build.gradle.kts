@@ -138,6 +138,7 @@ tasks.named<nu.studer.gradle.jooq.JooqGenerate>("generateJooq") {
 	if (project.hasProperty("runFlyway")) {
 		dependsOn("flywayMigrate")
 	}
+	onlyIf { project.hasProperty("runJooq") }
 }
 
 detekt {
