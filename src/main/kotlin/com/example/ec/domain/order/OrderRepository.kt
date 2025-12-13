@@ -9,6 +9,7 @@ import java.util.stream.Stream
 /**
  * 注文リポジトリインターフェース
  */
+@Suppress("TooManyFunctions") // 戦略ごとの取得手段を提供するため、関数数が多い
 interface OrderRepository {
     /**
      * 注文IDで注文を取得する
@@ -90,4 +91,36 @@ interface OrderRepository {
         from: LocalDateTime?,
         to: LocalDateTime?
     ): Stream<OrderExportRow>
+
+    /**
+     * 属性値を含む注文のストリームを取得する（CSV動的列向け）
+     */
+    fun streamOrdersWithAttributes(
+        from: LocalDateTime?,
+        to: LocalDateTime?
+    ): Stream<OrderAttributeJoinedRow>
+
+    /**
+     * preload 戦略用: 属性値を別取得する前提で、注文＋顧客のみをストリーミング取得
+     */
+    fun streamOrdersBase(
+        from: LocalDateTime?,
+        to: LocalDateTime?
+    ): Stream<OrderBaseRow>
+
+    /**
+        preload 用: 属性値を一括ロードしてメモリ Map で join するための取得
+     */
+    fun loadAttributeValueMap(
+        from: LocalDateTime?,
+        to: LocalDateTime?
+    ): Map<Long, Map<Long, String>>
+
+    /**
+        multiset 用: jOOQ multiset で注文ごとに属性リストをネストして取得
+     */
+    fun fetchOrdersWithAttributesMultiset(
+        from: LocalDateTime?,
+        to: LocalDateTime?
+    ): Stream<OrderWithAttributes>
 }

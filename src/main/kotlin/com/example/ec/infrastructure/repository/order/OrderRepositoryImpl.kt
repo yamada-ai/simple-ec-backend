@@ -1,13 +1,15 @@
 package com.example.ec.infrastructure.repository.order
 
 import com.example.ec.application.order.OrderListItemView
-import com.example.ec.domain.attribute.OrderAttributeDefinition
 import com.example.ec.domain.attribute.OrderAttributeValue
 import com.example.ec.domain.customer.Customer
 import com.example.ec.domain.order.Order
+import com.example.ec.domain.order.OrderAttributeJoinedRow
+import com.example.ec.domain.order.OrderBaseRow
 import com.example.ec.domain.order.OrderExportRow
 import com.example.ec.domain.order.OrderItem
 import com.example.ec.domain.order.OrderRepository
+import com.example.ec.domain.order.OrderWithAttributes
 import com.example.ec.domain.shared.ID
 import com.example.ec.domain.shared.Page
 import com.example.ec.domain.shared.Price
@@ -16,8 +18,10 @@ import com.example.ec.infrastructure.jooq.tables.records.OrderItemRecord
 import com.example.ec.infrastructure.jooq.tables.records.OrderRecord
 import com.example.ec.infrastructure.jooq.tables.references.CUSTOMER
 import com.example.ec.infrastructure.jooq.tables.references.ORDER
+import com.example.ec.infrastructure.jooq.tables.references.ORDER_ATTRIBUTE_DEFINITION
 import com.example.ec.infrastructure.jooq.tables.references.ORDER_ATTRIBUTE_VALUE
 import com.example.ec.infrastructure.jooq.tables.references.ORDER_ITEM
+import org.jooq.Record
 import org.jooq.Condition
 import org.jooq.DSLContext
 import org.jooq.impl.DSL
@@ -308,21 +312,7 @@ class OrderRepositoryImpl(
         from: LocalDateTime?,
         to: LocalDateTime?
     ): Stream<OrderExportRow> {
-        val conditions = mutableListOf<Condition>()
-
-        from?.let {
-            conditions.add(ORDER.ORDER_DATE.greaterOrEqual(it))
-        }
-
-        to?.let {
-            conditions.add(ORDER.ORDER_DATE.lessOrEqual(it))
-        }
-
-        val whereCondition = if (conditions.isEmpty()) {
-            DSL.noCondition()
-        } else {
-            DSL.and(conditions)
-        }
+        val whereCondition = buildSearchCondition(from, to, null)
 
         // Order + Customer + OrderItem を1クエリで取得し、N+1を解消
         return dsl.select(
@@ -353,5 +343,160 @@ class OrderRepositoryImpl(
                     unitPrice = record.get(ORDER_ITEM.UNIT_PRICE)!!
                 )
             }
+    }
+
+    override fun fetchOrdersWithAttributesMultiset(
+        from: LocalDateTime?,
+        to: LocalDateTime?
+    ): Stream<OrderWithAttributes> {
+        val whereCondition = buildSearchCondition(from, to, null)
+
+        val attributesField = DSL.multiset(
+            DSL.select(
+                ORDER_ATTRIBUTE_VALUE.ID,
+                ORDER_ATTRIBUTE_VALUE.ATTRIBUTE_DEFINITION_ID,
+                ORDER_ATTRIBUTE_VALUE.VALUE,
+                ORDER_ATTRIBUTE_VALUE.CREATED_AT
+            )
+                .from(ORDER_ATTRIBUTE_VALUE)
+                .where(ORDER_ATTRIBUTE_VALUE.ORDER_ID.eq(ORDER.ID))
+                .orderBy(ORDER_ATTRIBUTE_VALUE.ATTRIBUTE_DEFINITION_ID.asc())
+        ).convertFrom { result ->
+            result.map { rec ->
+                OrderAttributeValue(
+                    id = ID(rec.get(ORDER_ATTRIBUTE_VALUE.ID)!!),
+                    attributeDefinitionId = ID(rec.get(ORDER_ATTRIBUTE_VALUE.ATTRIBUTE_DEFINITION_ID)!!),
+                    value = rec.get(ORDER_ATTRIBUTE_VALUE.VALUE)!!,
+                    createdAt = rec.get(ORDER_ATTRIBUTE_VALUE.CREATED_AT)!!
+                )
+            }
+        }.`as`("attributes")
+
+        return dsl.select(
+            ORDER.ID,
+            ORDER.CUSTOMER_ID,
+            CUSTOMER.NAME,
+            CUSTOMER.EMAIL,
+            ORDER.ORDER_DATE,
+            attributesField
+        )
+            .from(ORDER)
+            .join(CUSTOMER).on(CUSTOMER.ID.eq(ORDER.CUSTOMER_ID))
+            .where(whereCondition)
+            .orderBy(ORDER.ID.asc())
+            .fetchStream()
+            .map { record -> mapToOrderWithAttributes(record, attributesField) }
+    }
+
+    private fun mapToOrderWithAttributes(
+        record: Record,
+        attributesField: org.jooq.Field<List<OrderAttributeValue>>
+    ): OrderWithAttributes {
+        val attrs = record.get(attributesField) ?: emptyList()
+        return OrderWithAttributes(
+            orderId = record.get(ORDER.ID)!!,
+            customerId = record.get(ORDER.CUSTOMER_ID)!!,
+            customerName = record.get(CUSTOMER.NAME)!!,
+            customerEmail = record.get(CUSTOMER.EMAIL)!!,
+            orderDate = record.get(ORDER.ORDER_DATE)!!,
+            attributes = attrs
+        )
+    }
+
+    override fun streamOrdersWithAttributes(
+        from: LocalDateTime?,
+        to: LocalDateTime?
+    ): Stream<OrderAttributeJoinedRow> {
+        val whereCondition = buildSearchCondition(from, to, null)
+
+        return dsl.select(
+            ORDER.ID,
+            ORDER.CUSTOMER_ID,
+            CUSTOMER.NAME,
+            CUSTOMER.EMAIL,
+            ORDER.ORDER_DATE,
+            ORDER_ATTRIBUTE_VALUE.ATTRIBUTE_DEFINITION_ID,
+            ORDER_ATTRIBUTE_DEFINITION.NAME,
+            ORDER_ATTRIBUTE_DEFINITION.LABEL,
+            ORDER_ATTRIBUTE_VALUE.VALUE
+        )
+            .from(ORDER)
+            .join(CUSTOMER).on(CUSTOMER.ID.eq(ORDER.CUSTOMER_ID))
+            .leftJoin(ORDER_ATTRIBUTE_VALUE).on(ORDER_ATTRIBUTE_VALUE.ORDER_ID.eq(ORDER.ID))
+            .leftJoin(ORDER_ATTRIBUTE_DEFINITION)
+            .on(ORDER_ATTRIBUTE_DEFINITION.ID.eq(ORDER_ATTRIBUTE_VALUE.ATTRIBUTE_DEFINITION_ID))
+            .where(whereCondition)
+            .orderBy(
+                ORDER.ID.asc(),
+                ORDER_ATTRIBUTE_VALUE.ATTRIBUTE_DEFINITION_ID.asc()
+            )
+            .fetchStream()
+            .map { record ->
+                OrderAttributeJoinedRow(
+                    orderId = record.get(ORDER.ID)!!,
+                    customerId = record.get(ORDER.CUSTOMER_ID)!!,
+                    customerName = record.get(CUSTOMER.NAME)!!,
+                    customerEmail = record.get(CUSTOMER.EMAIL)!!,
+                    orderDate = record.get(ORDER.ORDER_DATE)!!,
+                    definitionId = record.get(ORDER_ATTRIBUTE_VALUE.ATTRIBUTE_DEFINITION_ID),
+                    definitionName = record.get(ORDER_ATTRIBUTE_DEFINITION.NAME),
+                    definitionLabel = record.get(ORDER_ATTRIBUTE_DEFINITION.LABEL),
+                    value = record.get(ORDER_ATTRIBUTE_VALUE.VALUE)
+                )
+            }
+    }
+
+    override fun streamOrdersBase(
+        from: LocalDateTime?,
+        to: LocalDateTime?
+    ): Stream<OrderBaseRow> {
+        val whereCondition = buildSearchCondition(from, to, null)
+
+        return dsl.select(
+            ORDER.ID,
+            ORDER.CUSTOMER_ID,
+            CUSTOMER.NAME,
+            CUSTOMER.EMAIL,
+            ORDER.ORDER_DATE
+        )
+            .from(ORDER)
+            .join(CUSTOMER).on(CUSTOMER.ID.eq(ORDER.CUSTOMER_ID))
+            .where(whereCondition)
+            .orderBy(ORDER.ID.asc())
+            .fetchStream()
+            .map { record ->
+                OrderBaseRow(
+                    orderId = record.get(ORDER.ID)!!,
+                    customerId = record.get(ORDER.CUSTOMER_ID)!!,
+                    customerName = record.get(CUSTOMER.NAME)!!,
+                    customerEmail = record.get(CUSTOMER.EMAIL)!!,
+                    orderDate = record.get(ORDER.ORDER_DATE)!!
+                )
+            }
+    }
+
+    override fun loadAttributeValueMap(
+        from: LocalDateTime?,
+        to: LocalDateTime?
+    ): Map<Long, Map<Long, String>> {
+        val whereCondition = buildSearchCondition(from, to, null)
+
+        return dsl.select(
+            ORDER_ATTRIBUTE_VALUE.ORDER_ID,
+            ORDER_ATTRIBUTE_VALUE.ATTRIBUTE_DEFINITION_ID,
+            ORDER_ATTRIBUTE_VALUE.VALUE
+        )
+            .from(ORDER_ATTRIBUTE_VALUE)
+            .join(ORDER).on(ORDER_ATTRIBUTE_VALUE.ORDER_ID.eq(ORDER.ID))
+            .where(whereCondition)
+            .fetch()
+            .groupBy(
+                { record -> record.get(ORDER_ATTRIBUTE_VALUE.ORDER_ID)!! },
+                { record ->
+                    record.get(ORDER_ATTRIBUTE_VALUE.ATTRIBUTE_DEFINITION_ID)!! to
+                        record.get(ORDER_ATTRIBUTE_VALUE.VALUE)!!
+                }
+            )
+            .mapValues { (_, pairs) -> pairs.toMap() }
     }
 }
