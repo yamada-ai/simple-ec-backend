@@ -696,6 +696,7 @@ components:
         - customers
         - orders
         - orderItems
+        - attributeDefinitions
       properties:
         customers:
           type: integer
@@ -709,6 +710,10 @@ components:
           type: integer
           format: int64
           description: Total number of order items
+        attributeDefinitions:
+          type: integer
+          format: int64
+          description: Total number of attribute definitions
 
     SeedDataResponse:
       type: object

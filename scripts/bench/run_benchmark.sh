@@ -22,12 +22,13 @@ if [[ "${SKIP_SEED}" == "auto" ]]; then
   echo "Checking existing data..."
   SUMMARY=$(curl -sS "${BASE_URL}/admin/summary" 2>/dev/null || echo '{}')
   CURRENT_ORDERS=$(echo "$SUMMARY" | jq -r '.orders // 0' 2>/dev/null || echo '0')
+  CURRENT_ATTRS=$(echo "$SUMMARY" | jq -r '.attributeDefinitions // 0' 2>/dev/null || echo '0')
 
-  if [[ "$CURRENT_ORDERS" -eq "$ORDERS" ]]; then
-    echo "✓ Data already exists (${CURRENT_ORDERS} orders). Skipping seed."
+  if [[ "$CURRENT_ORDERS" -eq "$ORDERS" ]] && [[ "$CURRENT_ATTRS" -eq "$ATTRS" ]]; then
+    echo "✓ Data already exists (${CURRENT_ORDERS} orders, ${CURRENT_ATTRS} attrs). Skipping seed."
     SKIP_SEED=1
   else
-    echo "Data mismatch (current: ${CURRENT_ORDERS}, expected: ${ORDERS}). Running seed."
+    echo "Data mismatch (current: ${CURRENT_ORDERS} orders, ${CURRENT_ATTRS} attrs; expected: ${ORDERS} orders, ${ATTRS} attrs). Running seed."
     SKIP_SEED=0
   fi
 fi

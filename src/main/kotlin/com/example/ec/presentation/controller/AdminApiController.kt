@@ -32,7 +32,8 @@ class AdminApiController(
         val response = AdminSummaryResponse(
             customers = summary.customers,
             orders = summary.orders,
-            orderItems = summary.orderItems
+            orderItems = summary.orderItems,
+            attributeDefinitions = summary.attributeDefinitions
         )
 
         return ResponseEntity.ok(response)
