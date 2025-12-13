@@ -1,5 +1,8 @@
 package com.example.ec.application.admin
 
+import com.example.ec.domain.attribute.OrderAttributeDefinition
+import com.example.ec.domain.attribute.OrderAttributeDefinitionRepository
+import com.example.ec.domain.attribute.OrderAttributeValue
 import com.example.ec.domain.customer.Customer
 import com.example.ec.domain.customer.CustomerRepository
 import com.example.ec.domain.order.Order
@@ -33,34 +36,59 @@ private const val UNIT_PRICE_STEP = 500
 @Service
 class SeedDataUseCase(
     private val customerRepository: CustomerRepository,
-    private val orderRepository: OrderRepository
+    private val orderRepository: OrderRepository,
+    private val attributeDefinitionRepository: OrderAttributeDefinitionRepository
 ) {
     /**
      * テストデータを生成する
      *
      * @param customersCount 生成する顧客数
      * @param ordersCount 生成する注文数
+     * @param attributesCount 生成する属性定義数（0の場合は属性を生成しない）
      * @param seed ランダムシード（nullの場合はランダム、指定すると再現可能）
      * @return 生成結果
      */
     @Transactional
-    fun execute(customersCount: Int, ordersCount: Int, seed: Long? = null): SeedResult {
+    fun execute(
+        customersCount: Int,
+        ordersCount: Int,
+        attributesCount: Int = 0,
+        seed: Long? = null
+    ): SeedResult {
         val random = seed?.let { Random(it) } ?: Random
+
+        // 属性定義を生成（オプション）
+        val savedDefinitions = if (attributesCount > 0) {
+            // 既存の定義があればそれを使用、なければ新規生成
+            val existing = attributeDefinitionRepository.findAll()
+            if (existing.isNotEmpty()) {
+                existing
+            } else {
+                val definitions = generateAttributeDefinitions(attributesCount)
+                definitions.map { attributeDefinitionRepository.save(it) }
+            }
+        } else {
+            emptyList()
+        }
+
         // 顧客を生成
         val customers = generateCustomers(customersCount)
         val savedCustomers = customerRepository.saveAll(customers)
 
-        // 注文を生成
-        val orders = generateOrders(ordersCount, savedCustomers, random)
+        // 注文を生成（属性値を含む）
+        val orders = generateOrders(ordersCount, savedCustomers, savedDefinitions, random)
         val savedOrders = orderRepository.saveAll(orders)
 
-        // 生成された明細の総数を計算
+        // 生成された明細と属性値の総数を計算
         val totalItems = savedOrders.sumOf { it.items.size }
+        val totalAttributeValues = savedOrders.sumOf { it.attributes.size }
 
         return SeedResult(
             customersCreated = savedCustomers.size,
             ordersCreated = savedOrders.size,
-            orderItemsCreated = totalItems
+            orderItemsCreated = totalItems,
+            attributeDefinitionsCreated = savedDefinitions.size,
+            attributeValuesCreated = totalAttributeValues
         )
     }
 
@@ -76,10 +104,15 @@ class SeedDataUseCase(
         }
     }
 
-    private fun generateOrders(count: Int, customers: List<Customer>, random: Random): List<Order> {
+    private fun generateOrders(
+        count: Int,
+        customers: List<Customer>,
+        attributeDefinitions: List<OrderAttributeDefinition>,
+        random: Random
+    ): List<Order> {
         val now = LocalDateTime.now()
 
-        return (1..count).map { _ ->
+        return (1..count).mapIndexed { index, _ ->
             // ランダムな顧客を選択
             val customer = customers.random(random)
 
@@ -98,6 +131,11 @@ class SeedDataUseCase(
             val itemsCount = random.nextInt(MIN_ITEMS_PER_ORDER, MAX_ITEMS_PER_ORDER)
             val items = generateOrderItems(itemsCount, orderDate, random)
 
+            // 属性値を生成（決定的に生成: v{defId}_{orderId % 10}）
+            // indexを仮のorderIdとして使用
+            // 注意: attributeDefinitionsは保存済みの定義（IDが割り当てられている）
+            val attributes = generateOrderAttributeValues(index + 1L, attributeDefinitions, orderDate)
+
             // 合計金額を計算
             val totalAmount = items.fold(Price.ZERO) { acc, item ->
                 acc + (item.unitPrice * item.quantity.toBigDecimal())
@@ -110,7 +148,7 @@ class SeedDataUseCase(
                 totalAmount = totalAmount,
                 createdAt = orderDate,
                 items = items,
-                attributes = emptyList()
+                attributes = attributes
             )
         }
     }
@@ -137,6 +175,50 @@ class SeedDataUseCase(
             )
         }
     }
+
+    /**
+     * 属性定義を生成する
+     *
+     * @param count 生成する属性定義数
+     * @return 属性定義のリスト
+     */
+    private fun generateAttributeDefinitions(count: Int): List<OrderAttributeDefinition> {
+        val now = LocalDateTime.now()
+        return (1..count).map { index ->
+            OrderAttributeDefinition(
+                id = ID(0L), // 未永続化
+                name = "attr_$index",
+                label = "属性$index",
+                description = null,
+                createdAt = now
+            )
+        }
+    }
+
+    /**
+     * 注文の属性値を生成する（決定的に生成）
+     *
+     * SQLの実装に合わせて v{defId}_{orderId % 10} 形式で生成
+     *
+     * @param orderId 仮の注文ID（indexベース）
+     * @param definitions 属性定義のリスト
+     * @param createdAt 作成日時
+     * @return 属性値のリスト
+     */
+    private fun generateOrderAttributeValues(
+        orderId: Long,
+        definitions: List<OrderAttributeDefinition>,
+        createdAt: LocalDateTime
+    ): List<OrderAttributeValue> {
+        return definitions.map { definition ->
+            OrderAttributeValue(
+                id = ID(0L), // 未永続化
+                attributeDefinitionId = definition.id,
+                value = "v${definition.id.value}_${orderId % 10}",
+                createdAt = createdAt
+            )
+        }
+    }
 }
 
 /**
@@ -145,5 +227,7 @@ class SeedDataUseCase(
 data class SeedResult(
     val customersCreated: Int,
     val ordersCreated: Int,
-    val orderItemsCreated: Int
+    val orderItemsCreated: Int,
+    val attributeDefinitionsCreated: Int = 0,
+    val attributeValuesCreated: Int = 0
 )

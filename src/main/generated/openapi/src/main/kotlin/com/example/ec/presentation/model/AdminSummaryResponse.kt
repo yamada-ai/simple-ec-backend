@@ -18,6 +18,7 @@ import io.swagger.v3.oas.annotations.media.Schema
  * @param customers Total number of customers
  * @param orders Total number of orders
  * @param orderItems Total number of order items
+ * @param attributeDefinitions Total number of attribute definitions
  */
 data class AdminSummaryResponse(
 
@@ -28,7 +29,10 @@ data class AdminSummaryResponse(
     @get:JsonProperty("orders", required = true) val orders: kotlin.Long,
 
     @Schema(example = "null", required = true, description = "Total number of order items")
-    @get:JsonProperty("orderItems", required = true) val orderItems: kotlin.Long
+    @get:JsonProperty("orderItems", required = true) val orderItems: kotlin.Long,
+
+    @Schema(example = "null", required = true, description = "Total number of attribute definitions")
+    @get:JsonProperty("attributeDefinitions", required = true) val attributeDefinitions: kotlin.Long
     ) {
 
 }
