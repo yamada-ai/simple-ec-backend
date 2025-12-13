@@ -63,12 +63,29 @@ services:
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
       SPRING_PROFILES_ACTIVE: docker
+      SPRING_FLYWAY_ENABLED: "false"
       JAVA_TOOL_OPTIONS: "-Xms512m -Xmx512m -XX:+UseG1GC -Xlog:gc*:stdout:time,uptime,level,tags"
     ports:
       - "8080:8080"
     depends_on:
+      flyway:
+        condition: service_completed_successfully
+
+  flyway:
+    image: flyway/flyway:10
+    container_name: simple-ec-flyway
+    command: >
+      -url=jdbc:postgresql://postgres:5432/simple_ec
+      -user=postgres
+      -password=postgres
+      -locations=filesystem:/migrations
+      migrate
+    volumes:
+      - ./src/main/resources/db/migration:/migrations:ro
+    depends_on:
       postgres:
         condition: service_healthy
+    restart: "no"
 
 volumes:
   postgres_data:
