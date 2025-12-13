@@ -38,10 +38,8 @@ services:
       - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
-    ports:
-      - "9090:9090"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    depends_on:
+      - backend
 
   grafana:
     image: grafana/grafana-oss:latest
@@ -55,6 +53,22 @@ services:
       - prometheus
     volumes:
       - ./docker/grafana/provisioning:/etc/grafana/provisioning
+
+  backend:
+    build:
+      context: .
+    container_name: simple-ec-backend
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/simple_ec
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_PROFILES_ACTIVE: docker
+      JAVA_TOOL_OPTIONS: "-Xms512m -Xmx512m -XX:+UseG1GC -Xlog:gc*:stdout:time,uptime,level,tags"
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
 
 volumes:
   postgres_data:
