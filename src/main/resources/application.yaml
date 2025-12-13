@@ -12,3 +12,22 @@ spring:
     locations: classpath:db/migration
   jooq:
     sql-dialect: POSTGRES
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: never
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+      percentiles:
+        http.server.requests: 0.5,0.95,0.99
+      sla:
+        http.server.requests: 0.1s,0.25s,0.5s,1s,2s,5s

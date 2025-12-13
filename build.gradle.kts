@@ -47,12 +47,14 @@ dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-jooq")
 	implementation("org.springframework.boot:spring-boot-starter-web")
 	implementation("org.springframework.boot:spring-boot-starter-validation")
+	implementation("org.springframework.boot:spring-boot-starter-actuator")
 	implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
 	implementation("org.flywaydb:flyway-core:10.21.0")
 	implementation("org.flywaydb:flyway-database-postgresql:10.21.0")
 	implementation("org.jetbrains.kotlin:kotlin-reflect")
 	implementation("org.postgresql:postgresql:42.7.4")
 	jooqGenerator("org.postgresql:postgresql:42.7.4")
+	implementation("io.micrometer:micrometer-registry-prometheus")
 
 	// OpenAPI annotations
 	implementation("io.swagger.core.v3:swagger-annotations:2.2.27")
@@ -121,7 +123,8 @@ jooq {
 					}
 					target.apply {
 						packageName = "com.example.ec.infrastructure.jooq"
-						directory = "build/generated-src/jooq/main"
+						// コミット可能な場所に生成し、Docker build が外部DBに依存しないようにする
+						directory = "src/main/generated/jooq"
 					}
 					strategy.name = "org.jooq.codegen.DefaultGeneratorStrategy"
 				}
@@ -132,7 +135,11 @@ jooq {
 
 tasks.named<nu.studer.gradle.jooq.JooqGenerate>("generateJooq") {
 	allInputsDeclared.set(false)
-	dependsOn("flywayMigrate")
+	// Docker ビルドなど DB なし環境でも codegen できるように、Flyway 実行は明示指定時のみ
+	if (project.hasProperty("runFlyway")) {
+		dependsOn("flywayMigrate")
+	}
+	onlyIf { project.hasProperty("runJooq") }
 }
 
 detekt {
@@ -153,7 +160,7 @@ tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
 openApiGenerate {
 	generatorName.set("kotlin-spring")
 	inputSpec.set("$rootDir/src/main/resources/openapi/api.yaml")
-	outputDir.set("$buildDir/generated/openapi")
+	outputDir.set("$rootDir/src/main/generated/openapi")
 	apiPackage.set("com.example.ec.presentation.api")
 	modelPackage.set("com.example.ec.presentation.model")
 	configOptions.set(mapOf(
@@ -168,10 +175,10 @@ openApiGenerate {
 sourceSets {
 	main {
 		java {
-			srcDir("build/generated-src/jooq/main")
+			srcDir("src/main/generated/jooq")
 		}
 		kotlin {
-			srcDir("$buildDir/generated/openapi/src/main/kotlin")
+			srcDir("$rootDir/src/main/generated/openapi/src/main/kotlin")
 		}
 	}
 }
@@ -181,8 +188,9 @@ tasks.named("compileKotlin") {
 }
 
 flyway {
-	url = "jdbc:postgresql://localhost:5433/simple_ec"
-	user = "postgres"
-	password = "postgres"
+	// 環境変数を優先し、未指定時のみデフォルト(localhost)にフォールバック
+	url = System.getenv("SPRING_DATASOURCE_URL") ?: "jdbc:postgresql://localhost:5433/simple_ec"
+	user = System.getenv("SPRING_DATASOURCE_USERNAME") ?: "postgres"
+	password = System.getenv("SPRING_DATASOURCE_PASSWORD") ?: "postgres"
 	locations = arrayOf("filesystem:src/main/resources/db/migration")
 }
