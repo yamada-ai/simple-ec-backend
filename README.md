@@ -46,44 +46,57 @@ Stream/Sequenceは**join機構を持たない**。この制約下で以下の問
 
 ### Phase 2: 列展開パターン（動的Order Attributes）✅ 実装済み
 
-| Strategy | 実装方法 | 動的列の扱い | メモリ効率 | 実測 (30k orders × 15 attrs) |
+| Strategy | 実装方法 | 理論モデル | メモリ効率 | 実測 (30k orders × 15 attrs, Dense) |
 |----------|---------|------------|-----------|----------|
-| **preload** | 全属性値をMapに格納 | 簡単 | ⭐ (全データメモリ展開) | 0.41s ⚡ |
-| **multiset** | jOOQのmultiset機能 | 中程度 | ⭐⭐ (件数増で劣化) | 1.22s |
-| **sequence-window** | Sequence + Windowing | 難しい | ⭐⭐⭐ (ストリーミング) | 0.80s ✅ 推奨 |
-| **spliterator-window** | カスタムSpliterator + Windowing | 難しい | ⭐⭐⭐ (ストリーミング) | 0.74s |
+| **preload** | 全属性値をMapに格納 | M_app = O(V) | ⭐ (全データメモリ展開) | 0.41s ⚡ |
+| **multiset** | jOOQのmultiset機能 | T_DB が異なる | ⭐⭐ (materialization) | 1.22s |
+| **sequence-window** | Sequence + Windowing | M_app = O(a_max) | ⭐⭐⭐ (ストリーミング) | 0.80s ✅ 推奨 |
+| **spliterator-window** | カスタムSpliterator + Windowing | M_app = O(a_max) | ⭐⭐⭐ (ストリーミング) | 0.74s |
+
+**測定設計**（詳細は [Issue #18](https://github.com/yamada-ai/simple-ec-backend/issues/18)）:
+- **データセット**: 3条件（Baseline: N=30k/A=15/Dense、Sparse: N=30k/A=15/ā=2、Wide: N=30k/A=120/Dense）
+- **系統1（主）**: NullOutputStream + MD5（Compute測定、I/O除外）
+- **系統2（参考）**: 実ファイル出力（I/O含む）
+- **測定回数**: warmup 5回 + measurement 10回
+- **指標**: median + IQR + max（p95は使わない）
 
 ### 検証環境条件
-
-会社での実証実験を参考：
 
 | 項目 | 値 | 備考 |
 |------|-----|------|
 | メモリ制限 | 512MB | `-Xmx512m` |
-| 親レコード数 | 10,000件 | Order数 |
-| 属性定義数 | 15件 | 動的カラム数 |
-| 属性値サイズ | 3,000文字 | 1属性あたり |
-| 出力ファイルサイズ上限 | 100MB | LimitedOutputStream |
+| 測定データセット | 3条件 | Baseline/Sparse/Wide（詳細は下記） |
+| 測定系統 | 2系統 | Compute（主）+ 実ファイル出力（参考） |
 | jOOQ fetchSize | 1,000 | カーソルチャンク |
 
-### OOM発生条件の検証
+**データセット詳細**:
 
-- **ByteArrayOutputStream**: 全データをメモリ上に蓄積（OOMの主要因）
-- **Map事前取得**: 属性値を全てMapに展開 → OOM発生リスク高
-- **Sequence/Stream**: 遅延評価でOOM回避可能か検証
-- **メモリ監視**: `Runtime.getRuntime()` でヒープ使用量をログ出力
+| 条件 | N (orders) | A (attrs) | 密度（ā） | V (属性値総数) | 目的 |
+|------|-----------|----------|----------|--------------|------|
+| **Baseline** | 30,000 | 15 | Dense (15) | 450,000 | 基準測定 |
+| **Sparse** | 30,000 | 15 | Sparse (2) | 60,000 | メモリ差検証 |
+| **Wide** | 30,000 | 120 | Dense (120) | 3,600,000 | N·A支配検証 |
+
+### 検証の焦点
+
+- **理論モデルの検証**: N·A 支配、V（属性値総数）の影響、メモリ使用量（M_app = O(V) vs O(a_max)）
+- **データ密度の影響**: Dense vs Sparse でのメモリ・GC挙動の差
+- **動的列スケール**: 列数（A）増加時の列埋めコスト、I/O支配
+- **ストリーミング処理**: 遅延評価でメモリ圧迫を回避できるか
 
 ## 技術スタック
 
-- **Kotlin** 1.9.25
-- **Spring Boot** 3.5.x
+- **Kotlin** 2.0.21
+- **Java** 21 (Temurin)
+- **Spring Boot** 3.5.9
 - **PostgreSQL** 17
-- **jOOQ** 3.19.x (型安全 SQL + fetchLazy/fetchStream)
-- **Flyway** (DB マイグレーション)
-- **Kotest** (テスト)
-- **Detekt** (静的解析)
-- **OpenAPI Generator** (API スキーマ駆動開発)
+- **jOOQ** 3.19.28 (型安全 SQL + fetchLazy/fetchStream)
+- **Flyway** 10.21.0 (DB マイグレーション)
+- **Kotest** 5.9.1 (テスト)
+- **Detekt** 1.23.8 (静的解析)
+- **OpenAPI Generator** 7.10.0 (API スキーマ駆動開発)
 - **Apache Commons CSV** 1.12.0 (CSV生成)
+- **Micrometer + Prometheus** (メトリクス収集)
 
 ## 🗄 DB構成
 
@@ -223,14 +236,18 @@ curl "http://localhost:8080/api/export/orders/attributes?strategy=spliterator-wi
 
 ### ベンチマーク実行（自動化スクリプト）
 
-4戦略を一括実行してパフォーマンス比較：
+4戦略を一括実行してパフォーマンス比較（2系統測定）：
 
 ```bash
-# デフォルト: 5,000 注文 × 15 属性、各戦略でウォームアップ2回 + 計測3回
-./scripts/bench/run_benchmark.sh
+# Baseline条件: 30,000 注文 × 15 属性（Dense）
+# warmup 5回 + measurement 10回
+ORDERS=30000 ATTRS=15 WARMUP=5 RUNS=10 ./scripts/bench/run_benchmark.sh
 
-# 大量データ: 30,000 注文 × 15 属性
-ORDERS=30000 ATTRS=15 ./scripts/bench/run_benchmark.sh
+# Sparse条件: 30,000 注文 × 15 属性（ā=2）
+ORDERS=30000 ATTRS=15 SPARSE_MODE=true WARMUP=5 RUNS=10 ./scripts/bench/run_benchmark.sh
+
+# Wide条件: 30,000 注文 × 120 属性（Dense）
+ORDERS=30000 ATTRS=120 WARMUP=5 RUNS=10 ./scripts/bench/run_benchmark.sh
 
 # 特定戦略のみ実行
 STRATEGIES="preload sequence-window" ./scripts/bench/run_benchmark.sh
@@ -239,7 +256,11 @@ STRATEGIES="preload sequence-window" ./scripts/bench/run_benchmark.sh
 SKIP_SEED=1 ./scripts/bench/run_benchmark.sh
 ```
 
-結果は `docs/benchmark/runs/` に保存されます。詳細は [`scripts/bench/README.md`](scripts/bench/README.md) を参照。
+**測定系統**:
+- **系統1（主）**: `/api/export/orders/attributes/benchmark` でCompute測定（NullOutputStream + MD5）
+- **系統2（参考）**: `/api/export/orders/attributes` で実ファイル出力（I/O含む）
+
+結果は `docs/benchmark/runs/` に保存されます。詳細は [`scripts/bench/README.md`](scripts/bench/README.md) および [Issue #18](https://github.com/yamada-ai/simple-ec-backend/issues/18) を参照。
 
 ## プロジェクト構成
 
