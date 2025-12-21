@@ -1,249 +1,235 @@
-# Phase 2 ベンチマーク実行スクリプト
+# ベンチマークスクリプト
 
-Phase 2 戦略（preload / multiset / sequence-window / spliterator-window）の性能検証を再現できるようにするためのスクリプト群です。
+動的列CSV出力の4戦略（PRELOAD / MULTISET / SEQUENCE_WINDOW / SPLITERATOR_WINDOW）のベンチマーク測定スクリプト。
 
-## 変更履歴
+## スクリプト
 
-**v2.0 (API版)** - Admin API経由でデータ投入
-- `seed_benchmark_dataset.sh`: Admin API (`/admin/seed`) を使用
-- `seed_benchmark_dataset.sql`: 削除（API版では不要）
-- **メリット**:
-  - DB接続情報不要（アプリURLだけでOK）
-  - トランザクション管理がアプリ側で適切に処理される
-  - ドメインモデルのバリデーションが効く
-  - 同じロジックで生成（再現性保証）
+### `run_benchmark.sh`
 
-**v1.0 (SQL版)** - PostgreSQL直接接続（deprecated）
-- psqlコマンドでSQLを直接実行
-- DB接続情報（host/port/user/password）が必要
+2系統測定（Compute主軸 + 実ファイル参考）を実行し、median/IQR/max を自動計算する。
 
----
+**主な機能**:
+- ラウンドロビン実行（順序バイアス除去）
+- Prometheusのscrapeを待つ待機時間（デフォルト30秒）
+- MD5ハッシュ検証
+- Summary統計の自動計算
 
-## 前提条件
+### `seed_benchmark_dataset.sh`
 
-- アプリケーションが起動していること（デフォルト: `http://localhost:8080`）
-- メトリクスを取りたい場合は Actuator/Prometheus を有効化
-  - `docker compose up -d prometheus grafana`（オプション）
+ベンチマーク用データを生成する（オプション、手動seed推奨）。
 
 ---
 
-## 1. データセット投入
-
-ベンチマーク用に customers / orders / attributes / attribute values を一括生成します。
+## 使い方
 
 ### 基本的な使い方
 
 ```bash
-# 例1: デフォルト（5,000注文、15属性、seed=42）
-./scripts/bench/seed_benchmark_dataset.sh
+# データを手動で準備
+curl -X DELETE "http://localhost:8080/admin/truncate"
+curl -X POST "http://localhost:8080/admin/seed?customers=6000&orders=30000&attrs=15"
 
-# 例2: 引数で指定
-./scripts/bench/seed_benchmark_dataset.sh 10000 15 100
-
-# 例3: 環境変数で指定
-ORDERS=30000 ATTRS=15 SEED=999 ./scripts/bench/seed_benchmark_dataset.sh
+# ベンチマーク実行
+cd scripts/bench
+ORDERS=30000 ATTRS=15 CONDITION="baseline" ./run_benchmark.sh
 ```
 
-### パラメータ
+### 環境変数
 
-| パラメータ | デフォルト | 説明 |
-|-----------|----------|------|
-| `ORDERS` | 5000 | 生成する注文数 |
-| `ATTRS` | 15 | 生成する属性定義数 |
-| `SEED` | 42 | 乱数シード（再現性のため） |
-| `BASE_URL` | http://localhost:8080 | アプリケーションのURL |
-
-### 生成されるデータ
-
-- **Customers**: `ORDERS / 5`（最低1件）
-- **Orders**: `ORDERS`
-- **Order Items**: 注文ごとに3〜7個（ランダム）
-- **Attribute Definitions**: `ATTRS`
-  - `name`: `attr_1`, `attr_2`, ...
-  - `label`: `属性1`, `属性2`, ...
-- **Attribute Values**: `ORDERS × ATTRS`
-  - 形式: `v{defId}_{orderId % 10}`（決定的生成）
-
-### 内部動作
-
-1. **Truncate**: `/admin/truncate` で既存データを削除
-2. **Seed**: `/admin/seed?customers=...&orders=...&attrs=...&seed=...` で新規データ生成
+| 変数 | デフォルト | 説明 |
+|------|-----------|------|
+| `BASE_URL` | `http://localhost:8080` | APIのベースURL |
+| `ORDERS` | `5000` | 注文数 |
+| `ATTRS` | `15` | 属性定義数 |
+| `SPARSE_MODE` | `false` | Sparseモード（データ準備時の参考情報） |
+| `WARMUP` | `5` | warmup回数 |
+| `RUNS` | `10` | 測定回数 |
+| `CONDITION` | `default` | 測定条件名（出力ディレクトリ名に使用） |
+| `STRATEGIES` | `preload multiset sequence-window spliterator-window` | 測定する戦略 |
+| `SKIP_SEED` | `auto` | データ準備をスキップ（`auto` / `0` / `1`） |
+| `METRICS_WAIT` | `30` | 各測定後の待機時間（秒） |
 
 ---
 
-## 2. ベンチマーク実行
+## 実験実施例
 
-ウォームアップ＋本計測をまとめて実行し、結果をディレクトリに保存します。
-
-### 基本的な使い方
+### 条件1: Baseline（N=30k, A=15, Dense）
 
 ```bash
-# 例1: デフォルト（5,000注文、15属性、4戦略）
-./scripts/bench/run_benchmark.sh
+# データ準備
+curl -X DELETE "http://localhost:8080/admin/truncate"
+curl -X POST "http://localhost:8080/admin/seed?customers=6000&orders=30000&attrs=15"
 
-# 例2: 大量データでOOMテスト
-ORDERS=30000 ATTRS=15 ./scripts/bench/run_benchmark.sh
-
-# 例3: 特定戦略のみ
-STRATEGIES="multiset sequence-window" ./scripts/bench/run_benchmark.sh
-
-# 例4: データ投入をスキップ（既にデータがある場合）
-SKIP_SEED=1 ./scripts/bench/run_benchmark.sh
-
-# 例5: 強制的にデータ再投入
-SKIP_SEED=0 ./scripts/bench/run_benchmark.sh
-
-# 例6: 自動判定（デフォルト）
-# データが既に期待件数存在すればスキップ、なければseed実行
-./scripts/bench/run_benchmark.sh
+# ベンチマーク実行
+cd scripts/bench
+ORDERS=30000 ATTRS=15 WARMUP=5 RUNS=10 CONDITION="baseline" ./run_benchmark.sh
 ```
 
-### パラメータ
-
-| パラメータ | デフォルト | 説明 |
-|-----------|----------|------|
-| `BASE_URL` | http://localhost:8080 | アプリケーションのURL |
-| `ORDERS` | 5000 | 注文数（seed時に使用） |
-| `ATTRS` | 15 | 属性定義数（seed時に使用） |
-| `WARMUP_RUNS` | 2 | ウォームアップ回数 |
-| `MEASURE_RUNS` | 3 | 本計測回数 |
-| `STRATEGIES` | preload multiset sequence-window spliterator-window | 実行する戦略 |
-| `OUT_ROOT` | docs/benchmark/runs | 結果の保存先ルート |
-| `RUN_LABEL` | YYYYmmdd-HHMMSS | 実行ラベル |
-| `SKIP_SEED` | auto | auto=自動判定, 0=必ずseed, 1=必ずスキップ |
-| `METRICS_BASE` | (空) | Actuatorメトリクス取得URL（例: http://localhost:8080/actuator） |
-
-### 出力ディレクトリ構造
-
-```
-docs/benchmark/runs/
-└── 20241210-153045_5000orders_15attrs/
-    ├── artifacts/
-    │   ├── preload-warmup1.csv
-    │   ├── preload-warmup2.csv
-    │   ├── preload-run1.csv
-    │   ├── preload-run2.csv
-    │   ├── preload-run3.csv
-    │   └── ... (他の戦略も同様)
-    ├── preload-run1.json          # curl -w で取得したメタデータ
-    ├── preload-run1.md5           # CSV の MD5 ハッシュ
-    ├── preload-run1-http-metrics.json  # (METRICS_BASE指定時)
-    ├── preload-run1-memory.json        # (METRICS_BASE指定時)
-    └── preload-run1-gc.json            # (METRICS_BASE指定時)
-```
-
-### メトリクス取得（オプション）
-
-Actuator経由でメトリクスを取得する場合：
+### 条件2: Sparse（N=30k, A=15, ā=2）
 
 ```bash
-METRICS_BASE=http://localhost:8080/actuator ./scripts/bench/run_benchmark.sh
+# データ準備
+curl -X DELETE "http://localhost:8080/admin/truncate"
+curl -X POST "http://localhost:8080/admin/seed?customers=6000&orders=30000&attrs=15&sparse=true"
+
+# ベンチマーク実行
+cd scripts/bench
+ORDERS=30000 ATTRS=15 SPARSE_MODE=true WARMUP=5 RUNS=10 CONDITION="sparse" ./run_benchmark.sh
 ```
 
-取得するメトリクス：
-- `http.server.requests`（URI=/api/export/orders/attributes, method=GET）
-- `jvm.memory.used`
-- `jvm.gc.pause`
-
-### Grafana/Prometheus併用
+### 条件3: Wide（N=30k, A=120, Dense）
 
 ```bash
-# 1. メトリクス基盤を起動
-docker compose up -d prometheus grafana
+# データ準備
+curl -X DELETE "http://localhost:8080/admin/truncate"
+curl -X POST "http://localhost:8080/admin/seed?customers=6000&orders=30000&attrs=120"
 
-# 2. アプリを起動（GCログ有効化）
-JAVA_TOOL_OPTIONS="-Xms512m -Xmx512m -Xlog:gc*:file=logs/gc.log:time,uptime" \
-  ./gradlew bootRun
-
-# 3. ベンチマーク実行
-METRICS_BASE=http://localhost:8080/actuator ./scripts/bench/run_benchmark.sh
-
-# 4. Grafanaで可視化
-# http://localhost:3000 (admin/admin)
+# ベンチマーク実行
+cd scripts/bench
+ORDERS=30000 ATTRS=120 WARMUP=5 RUNS=10 CONDITION="wide" ./run_benchmark.sh
 ```
 
 ---
 
-## 3. 結果の検証
+## 出力ファイル
 
-### CSV整合性の確認
+### ディレクトリ構造
 
-全戦略で同じCSVが出力されることを確認：
-
-```bash
-cd docs/benchmark/runs/20241210-153045_5000orders_15attrs/
-
-# 各戦略のrun1のMD5を比較
-cat preload-run1.md5
-cat multiset-run1.md5
-cat sequence-window-run1.md5
-cat spliterator-window-run1.md5
+```
+docs/benchmark/runs/{condition}_{timestamp}/
+├── compute/                          # 系統1: Compute測定
+│   ├── preload-warmup1.json
+│   ├── preload-run1.json
+│   ├── ...
+│   ├── sequence-window-run10.json
+│   └── ...
+├── file/                             # 系統2: 実ファイル出力（5回に1回）
+│   ├── preload-run1.csv
+│   ├── preload-run1.md5
+│   └── ...
+└── summary.txt                       # Summary統計
 ```
 
-すべて同じMD5ハッシュ値であればOK ✅
+### summary.txt の例
 
-### 処理時間の比較
-
-```bash
-# run1のtime_totalを抽出
-jq '.time_total' *-run1.json
 ```
+Benchmark Summary: baseline
+Date: 2025-12-21 17:00:00
 
-### メモリ使用量の比較
+--- preload ---
+  Samples: 10
+  Median: 940 ms
+  IQR: 50 ms (Q1=920, Q3=970)
+  Min: 900 ms, Max: 1020 ms
+  MD5: e1df506292e0b9d83e533fcd9ee5d158
 
-```bash
-# メモリメトリクスを抽出
-jq '.measurements[0].value' *-run1-memory.json
+--- multiset ---
+  Samples: 10
+  Median: 2888 ms
+  IQR: 120 ms (Q1=2850, Q3=2970)
+  Min: 2800 ms, Max: 3050 ms
+  MD5: e1df506292e0b9d83e533fcd9ee5d158
+
+...
 ```
 
 ---
 
-## 注意事項
+## 測定の流れ
 
-1. **大量データ（30,000 orders × 15 attrs）**:
-   - データ生成に時間がかかる（API経由で数分）
-   - preload戦略でOOM発生想定（`-Xmx512m`推奨）
+1. **Warmup Phase** (5 rounds)
+   - 各ラウンドでラウンドロビンで全戦略を実行
+   - 系統1（Compute）のみ
+   - 各測定後に5秒待機
 
-2. **ベンチマーク実行前の準備**:
-   - アプリを再起動してヒープをリセット
-   - 他のプロセスを停止して測定を安定化
+2. **Warmup完了後に30秒待機** → JITコンパイル完了を確実にする
 
-3. **再現性**:
-   - 同じ`SEED`を使えば同じデータが生成される
-   - 同じデータで同じCSVが出力されることを確認
+3. **Measurement Phase** (10 runs)
+   - 各ランでラウンドロビンで全戦略を実行
+   - 系統1（Compute）: 毎回実行
+   - 系統2（実ファイル）: 5回に1回（run1, run6）
+   - 各測定後に30秒待機 → Prometheusのscrapeを待つ
+
+4. **Summary統計の自動計算**
+   - median, IQR, min, max を計算
+   - MD5ハッシュを検証
+   - `summary.txt` に出力
+
+---
+
+## ⚠️ 重要: メトリクス収集
+
+スクリプト完了後、**30-60秒待機してから** Prometheus/Grafana でメトリクスを記録してください。
+
+### 記録すべきメトリクス
+
+**1. JVM Heap Peak**（各戦略のメモリ使用量ピーク）:
+```promql
+max_over_time(
+  sum(jvm_memory_used_bytes{area="heap", job="simple-ec-backend"})[30m]
+)
+```
+
+**2. GC Pause Total**（GC停止時間の累積）:
+```promql
+increase(
+  jvm_gc_pause_seconds_sum{job="simple-ec-backend"}[30m]
+)
+```
+
+**3. GC Allocation Rate**（アロケーション速度、取得できれば）:
+```promql
+rate(
+  jvm_gc_memory_allocated_bytes_total{job="simple-ec-backend"}[5m]
+)
+```
+
+### 詳細な手順
+
+測定ガイドを参照してください:
+- [`docs/benchmark/measurement-guide.md`](../../docs/benchmark/measurement-guide.md)
 
 ---
 
 ## トラブルシューティング
 
-### データ投入が失敗する
+### データが一致しない（SKIP_SEED=auto でエラー）
 
 ```bash
-# アプリが起動しているか確認
-curl http://localhost:8080/admin/summary
+# 手動でデータを準備してから再実行
+curl -X DELETE "http://localhost:8080/admin/truncate"
+curl -X POST "http://localhost:8080/admin/seed?customers=6000&orders=30000&attrs=15"
 
-# エラーメッセージを確認
-./scripts/bench/seed_benchmark_dataset.sh 2>&1 | tee seed.log
+# SKIP_SEED=1 で強制スキップ
+SKIP_SEED=1 ./run_benchmark.sh
 ```
 
-### ベンチマーク実行が失敗する
+### MD5ハッシュが一致しない
+
+データの順序やフォーマットの問題。データを再生成してください。
+
+### 特定の戦略のみ実行したい
 
 ```bash
-# 手動でAPIを呼び出してみる
-curl "http://localhost:8080/api/export/orders/attributes?strategy=sequence-window" \
-  -o test.csv
-
-# レスポンスコードを確認
-curl -w "%{http_code}\n" -o /dev/null \
-  "http://localhost:8080/api/export/orders/attributes?strategy=sequence-window"
+STRATEGIES="preload sequence-window" ./run_benchmark.sh
 ```
 
-### メトリクスが取得できない
+### 待機時間を調整したい
 
 ```bash
-# Actuatorが有効か確認
-curl http://localhost:8080/actuator
+# Prometheusのscrapeを待つ時間を60秒に
+METRICS_WAIT=60 ./run_benchmark.sh
 
-# Prometheusエンドポイントが有効か確認
-curl http://localhost:8080/actuator/prometheus | head -20
+# warmup中の待機も含めて短くしたい（非推奨）
+METRICS_WAIT=10 ./run_benchmark.sh
 ```
+
+---
+
+## 次のステップ
+
+1. 3条件（Baseline / Sparse / Wide）をそれぞれ測定
+2. 各条件でメトリクスを記録
+3. 結果を `docs/benchmark/results.md` にまとめる
+4. グラフを作成（処理時間、メモリ、GC）
+5. 考察を記述（理論モデルとの対応）
