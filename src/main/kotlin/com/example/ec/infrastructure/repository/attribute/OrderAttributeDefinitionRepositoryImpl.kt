@@ -84,6 +84,10 @@ class OrderAttributeDefinitionRepositoryImpl(
             .fetchOne(0, Long::class.java) ?: 0L
     }
 
+    override fun truncate() {
+        dsl.deleteFrom(ORDER_ATTRIBUTE_DEFINITION).execute()
+    }
+
     private fun convertToDomain(record: OrderAttributeDefinitionRecord): OrderAttributeDefinition {
         return OrderAttributeDefinition(
             id = ID(record.id!!),

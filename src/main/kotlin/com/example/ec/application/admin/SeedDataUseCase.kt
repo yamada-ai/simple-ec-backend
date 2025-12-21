@@ -59,11 +59,16 @@ class SeedDataUseCase(
 
         // 属性定義を生成（オプション）
         val savedDefinitions = if (attributesCount > 0) {
-            // 既存の定義があればそれを使用、なければ新規生成
+            // 既存の定義があっても、要求数と一致しない場合は削除して新規生成
             val existing = attributeDefinitionRepository.findAll()
-            if (existing.isNotEmpty()) {
+            if (existing.size == attributesCount) {
+                // 既存定義数が要求数と一致 → 再利用
                 existing
             } else {
+                // 既存定義数が要求数と不一致 → 削除して新規生成
+                if (existing.isNotEmpty()) {
+                    attributeDefinitionRepository.truncate()
+                }
                 val definitions = generateAttributeDefinitions(attributesCount)
                 definitions.map { attributeDefinitionRepository.save(it) }
             }

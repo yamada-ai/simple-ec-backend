@@ -52,4 +52,10 @@ interface OrderAttributeDefinitionRepository {
      * @return 属性定義の総数
      */
     fun count(): Long
+
+    /**
+     * 全ての属性定義を削除する（テスト/開発用）
+     * 関連する属性値も削除される（ON DELETE CASCADE）
+     */
+    fun truncate()
 }
