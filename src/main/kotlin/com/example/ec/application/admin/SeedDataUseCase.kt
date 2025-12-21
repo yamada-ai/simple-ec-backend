@@ -30,6 +30,14 @@ private const val MIN_UNIT_PRICE_MULTIPLIER = 1
 private const val MAX_UNIT_PRICE_MULTIPLIER = 21
 private const val UNIT_PRICE_STEP = 500
 
+// Sparse モード用定数
+private const val SPARSE_RANDOM_RANGE = 100
+private const val SPARSE_ONE_ATTR_THRESHOLD = 39
+private const val SPARSE_TWO_ATTR_THRESHOLD = 79
+private const val SPARSE_MIN_COUNT = 1
+private const val SPARSE_MID_COUNT = 2
+private const val SPARSE_MAX_COUNT = 3
+
 /**
  * テストデータ生成ユースケース（開発/テスト用）
  */
@@ -45,6 +53,7 @@ class SeedDataUseCase(
      * @param customersCount 生成する顧客数
      * @param ordersCount 生成する注文数
      * @param attributesCount 生成する属性定義数（0の場合は属性を生成しない）
+     * @param sparseMode trueの場合、各注文は平均2個の属性のみ持つ（デフォルトは全属性を持つ）
      * @param seed ランダムシード（nullの場合はランダム、指定すると再現可能）
      * @return 生成結果
      */
@@ -53,6 +62,7 @@ class SeedDataUseCase(
         customersCount: Int,
         ordersCount: Int,
         attributesCount: Int = 0,
+        sparseMode: Boolean = false,
         seed: Long? = null
     ): SeedResult {
         val random = seed?.let { Random(it) } ?: Random
@@ -81,7 +91,7 @@ class SeedDataUseCase(
         val savedCustomers = customerRepository.saveAll(customers)
 
         // 注文を生成（属性値を含む）
-        val orders = generateOrders(ordersCount, savedCustomers, savedDefinitions, random)
+        val orders = generateOrders(ordersCount, savedCustomers, savedDefinitions, sparseMode, random)
         val savedOrders = orderRepository.saveAll(orders)
 
         // 生成された明細と属性値の総数を計算
@@ -113,6 +123,7 @@ class SeedDataUseCase(
         count: Int,
         customers: List<Customer>,
         attributeDefinitions: List<OrderAttributeDefinition>,
+        sparseMode: Boolean,
         random: Random
     ): List<Order> {
         val now = LocalDateTime.now()
@@ -139,7 +150,13 @@ class SeedDataUseCase(
             // 属性値を生成（決定的に生成: v{defId}_{orderId % 10}）
             // indexを仮のorderIdとして使用
             // 注意: attributeDefinitionsは保存済みの定義（IDが割り当てられている）
-            val attributes = generateOrderAttributeValues(index + 1L, attributeDefinitions, orderDate)
+            val attributes = generateOrderAttributeValues(
+                index + 1L,
+                attributeDefinitions,
+                sparseMode,
+                orderDate,
+                random
+            )
 
             // 合計金額を計算
             val totalAmount = items.fold(Price.ZERO) { acc, item ->
@@ -207,15 +224,34 @@ class SeedDataUseCase(
      *
      * @param orderId 仮の注文ID（indexベース）
      * @param definitions 属性定義のリスト
+     * @param sparseMode trueの場合、平均2個の属性のみ生成
      * @param createdAt 作成日時
+     * @param random ランダムジェネレータ
      * @return 属性値のリスト
      */
     private fun generateOrderAttributeValues(
         orderId: Long,
         definitions: List<OrderAttributeDefinition>,
-        createdAt: LocalDateTime
+        sparseMode: Boolean,
+        createdAt: LocalDateTime,
+        random: Random
     ): List<OrderAttributeValue> {
-        return definitions.map { definition ->
+        val selectedDefinitions = if (sparseMode && definitions.isNotEmpty()) {
+            // Sparse モード: 平均2個の属性をランダムに選択
+            // Poisson分布的に1〜3個（平均2個）
+            val count = when (random.nextInt(0, SPARSE_RANDOM_RANGE)) {
+                in 0..SPARSE_ONE_ATTR_THRESHOLD -> SPARSE_MIN_COUNT  // 40%
+                in (SPARSE_ONE_ATTR_THRESHOLD + 1)..SPARSE_TWO_ATTR_THRESHOLD -> SPARSE_MID_COUNT  // 40%
+                else -> SPARSE_MAX_COUNT       // 20%
+            }.coerceAtMost(definitions.size)
+
+            definitions.shuffled(random).take(count)
+        } else {
+            // Dense モード: 全属性を生成
+            definitions
+        }
+
+        return selectedDefinitions.map { definition ->
             OrderAttributeValue(
                 id = ID(0L), // 未永続化
                 attributeDefinitionId = definition.id,

@@ -44,9 +44,10 @@ class AdminApiController(
         @RequestParam(defaultValue = "100") customers: Int,
         @RequestParam(defaultValue = "1000") orders: Int,
         @RequestParam(defaultValue = "0") attrs: Int,
+        @RequestParam(defaultValue = "false") sparse: Boolean,
         @RequestParam(required = false) seed: Long?
     ): ResponseEntity<SeedDataResponse> {
-        val result = seedDataUseCase.execute(customers, orders, attrs, seed)
+        val result = seedDataUseCase.execute(customers, orders, attrs, sparse, seed)
 
         val response = SeedDataResponse(
             customersCreated = result.customersCreated,
