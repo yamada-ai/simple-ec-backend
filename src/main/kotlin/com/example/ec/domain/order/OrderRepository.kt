@@ -1,6 +1,5 @@
 package com.example.ec.domain.order
 
-import com.example.ec.application.order.OrderListItemView
 import com.example.ec.domain.shared.ID
 import com.example.ec.domain.shared.Page
 import java.time.LocalDateTime
@@ -55,7 +54,7 @@ interface OrderRepository {
         customerName: String?,
         page: Int,
         size: Int
-    ): Page<OrderListItemView>
+    ): Page<OrderListItem>
 
     /**
      * 全件数を取得する

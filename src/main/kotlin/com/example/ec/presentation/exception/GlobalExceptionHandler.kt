@@ -1,5 +1,7 @@
 package com.example.ec.presentation.exception
 
+import com.example.ec.application.exception.ConflictException
+import com.example.ec.application.exception.NotFoundException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.ExceptionHandler

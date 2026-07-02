@@ -3,6 +3,7 @@ package com.example.ec.presentation.controller
 import com.example.ec.application.admin.GetAdminSummaryUseCase
 import com.example.ec.application.admin.SeedDataUseCase
 import com.example.ec.application.admin.TruncateDataUseCase
+import com.example.ec.presentation.mapper.toResponse
 import com.example.ec.presentation.model.AdminSummaryResponse
 import com.example.ec.presentation.model.SeedDataResponse
 import com.example.ec.presentation.model.TruncateDataResponse
@@ -27,16 +28,7 @@ class AdminApiController(
 
     @GetMapping("/summary")
     fun getAdminSummary(): ResponseEntity<AdminSummaryResponse> {
-        val summary = getAdminSummaryUseCase.execute()
-
-        val response = AdminSummaryResponse(
-            customers = summary.customers,
-            orders = summary.orders,
-            orderItems = summary.orderItems,
-            attributeDefinitions = summary.attributeDefinitions
-        )
-
-        return ResponseEntity.ok(response)
+        return ResponseEntity.ok(getAdminSummaryUseCase.execute().toResponse())
     }
 
     @PostMapping("/seed")
@@ -48,27 +40,11 @@ class AdminApiController(
         @RequestParam(required = false) seed: Long?
     ): ResponseEntity<SeedDataResponse> {
         val result = seedDataUseCase.execute(customers, orders, attrs, sparse, seed)
-
-        val response = SeedDataResponse(
-            customersCreated = result.customersCreated,
-            ordersCreated = result.ordersCreated,
-            orderItemsCreated = result.orderItemsCreated,
-            attributeDefinitionsCreated = result.attributeDefinitionsCreated,
-            attributeValuesCreated = result.attributeValuesCreated
-        )
-
-        return ResponseEntity.ok(response)
+        return ResponseEntity.ok(result.toResponse())
     }
 
     @DeleteMapping("/truncate")
     fun truncateData(): ResponseEntity<TruncateDataResponse> {
-        val result = truncateDataUseCase.execute()
-
-        val response = TruncateDataResponse(
-            deleted = result.deleted,
-            message = result.message
-        )
-
-        return ResponseEntity.ok(response)
+        return ResponseEntity.ok(truncateDataUseCase.execute().toResponse())
     }
 }

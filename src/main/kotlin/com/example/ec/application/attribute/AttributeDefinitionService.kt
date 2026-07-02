@@ -3,8 +3,8 @@ package com.example.ec.application.attribute
 import com.example.ec.domain.attribute.OrderAttributeDefinition
 import com.example.ec.domain.attribute.OrderAttributeDefinitionRepository
 import com.example.ec.domain.shared.ID
-import com.example.ec.presentation.exception.ConflictException
-import com.example.ec.presentation.exception.NotFoundException
+import com.example.ec.application.exception.ConflictException
+import com.example.ec.application.exception.NotFoundException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDateTime

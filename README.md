@@ -98,6 +98,10 @@ Stream/Sequenceは**join機構を持たない**。この制約下で以下の問
 - **Apache Commons CSV** 1.12.0 (CSV生成)
 - **Micrometer + Prometheus** (メトリクス収集)
 
+## アーキテクチャ
+
+層構成と依存ルールは [`docs/architecture.md`](docs/architecture.md) を参照。
+
 ## 🗄 DB構成
 
 ### 基本エンティティ（DDD: 単数形）

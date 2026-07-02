@@ -1,31 +1,26 @@
 package com.example.ec.presentation.controller
 
+import com.example.ec.application.export.OrderAttributeExportBenchmarkService
 import com.example.ec.application.export.OrderAttributeExportService
-import com.example.ec.infrastructure.io.NullOutputStream
+import com.example.ec.presentation.mapper.toResponse
 import com.example.ec.presentation.model.BenchmarkResult
-import org.springframework.core.io.InputStreamResource
+import com.example.ec.presentation.streaming.CsvStreamResponseFactory
+import com.example.ec.presentation.support.toSystemLocalDateTime
 import org.springframework.core.io.Resource
-import org.springframework.http.HttpHeaders
-import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
-import java.io.PipedInputStream
-import java.io.PipedOutputStream
-import java.io.PrintWriter
-import java.security.DigestOutputStream
-import java.security.MessageDigest
 import java.time.OffsetDateTime
-import java.time.ZoneId
-import kotlin.concurrent.thread
 
 /**
  * 動的注文属性を含むCSVエクスポート（Phase2）
  */
 @RestController
 class ExportAttributesController(
-    private val orderAttributeExportService: OrderAttributeExportService
+    private val orderAttributeExportService: OrderAttributeExportService,
+    private val benchmarkService: OrderAttributeExportBenchmarkService,
+    private val csvStreamResponseFactory: CsvStreamResponseFactory
 ) {
 
     @GetMapping("/api/export/orders/attributes")
@@ -34,27 +29,12 @@ class ExportAttributesController(
         @RequestParam(required = false) endDate: OffsetDateTime?,
         @RequestParam(required = false, defaultValue = "sequence-window") strategy: String
     ): ResponseEntity<Resource> {
-        val from = startDate?.atZoneSameInstant(ZoneId.systemDefault())?.toLocalDateTime()
-        val to = endDate?.atZoneSameInstant(ZoneId.systemDefault())?.toLocalDateTime()
+        val from = startDate.toSystemLocalDateTime()
+        val to = endDate.toSystemLocalDateTime()
 
-        val pipedOutputStream = PipedOutputStream()
-        val pipedInputStream = PipedInputStream(pipedOutputStream, BUFFER_SIZE)
-
-        thread(start = true, name = "csv-attributes-export") {
-            pipedOutputStream.use { output ->
-                val writer = PrintWriter(output, true, Charsets.UTF_8)
-                orderAttributeExportService.writeCsv(from, to, strategy, writer)
-                writer.flush()
-            }
+        return csvStreamResponseFactory.streamCsv("orders_attributes", "csv-attributes-export") { writer ->
+            orderAttributeExportService.writeCsv(from, to, strategy, writer)
         }
-
-        val resource = InputStreamResource(pipedInputStream)
-        val filename = "orders_attributes_${System.currentTimeMillis()}.csv"
-
-        return ResponseEntity.ok()
-            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"$filename\"")
-            .contentType(MediaType.parseMediaType("text/csv"))
-            .body(resource)
     }
 
     /**
@@ -67,34 +47,8 @@ class ExportAttributesController(
         @RequestParam(required = false) endDate: OffsetDateTime?,
         @RequestParam(required = false, defaultValue = "sequence-window") strategy: String
     ): ResponseEntity<BenchmarkResult> {
-        val from = startDate?.atZoneSameInstant(ZoneId.systemDefault())?.toLocalDateTime()
-        val to = endDate?.atZoneSameInstant(ZoneId.systemDefault())?.toLocalDateTime()
-
-        val digest = MessageDigest.getInstance("MD5")
-        val nullOutputStream = NullOutputStream()
-        val digestOutputStream = DigestOutputStream(nullOutputStream, digest)
-
-        val startTime = System.nanoTime()
-        digestOutputStream.use { output ->
-            val writer = PrintWriter(output, true, Charsets.UTF_8)
-            orderAttributeExportService.writeCsv(from, to, strategy, writer)
-            writer.flush()
-        }
-        val elapsedMs = (System.nanoTime() - startTime) / NANOS_PER_MILLI
-
-        val md5Hash = digest.digest().joinToString("") { "%02x".format(it) }
-
-        return ResponseEntity.ok(
-            BenchmarkResult(
-                strategy = strategy,
-                elapsedMs = elapsedMs,
-                md5 = md5Hash
-            )
-        )
-    }
-
-    companion object {
-        private const val BUFFER_SIZE = 8 * 1024
-        private const val NANOS_PER_MILLI = 1_000_000L
+        val from = startDate.toSystemLocalDateTime()
+        val to = endDate.toSystemLocalDateTime()
+        return ResponseEntity.ok(benchmarkService.measure(from, to, strategy).toResponse())
     }
 }

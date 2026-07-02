@@ -1,7 +1,7 @@
 package com.example.ec.presentation.controller.attribute
 
 import com.example.ec.application.attribute.AttributeDefinitionService
-import com.example.ec.domain.attribute.OrderAttributeDefinition
+import com.example.ec.presentation.mapper.toResponse
 import com.example.ec.presentation.model.AttributeDefinitionResponse
 import com.example.ec.presentation.model.CreateAttributeDefinitionRequest
 import com.example.ec.presentation.model.UpdateAttributeDefinitionRequest
@@ -15,7 +15,6 @@ import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
-import java.time.ZoneOffset
 
 /**
  * 注文属性定義 CRUD API コントローラー
@@ -75,17 +74,4 @@ class AttributeDefinitionController(
         service.delete(id)
         return ResponseEntity.noContent().build()
     }
-}
-
-/**
- * OrderAttributeDefinition を AttributeDefinitionResponse に変換する
- */
-private fun OrderAttributeDefinition.toResponse(): AttributeDefinitionResponse {
-    return AttributeDefinitionResponse(
-        id = id.value,
-        name = name,
-        label = label,
-        description = description,
-        createdAt = createdAt.atOffset(ZoneOffset.UTC)
-    )
 }

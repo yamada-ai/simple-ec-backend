@@ -1,7 +1,7 @@
 package com.example.ec.presentation.controller
 
 import com.example.ec.application.order.GetOrdersUseCase
-import com.example.ec.application.order.OrderListItemView
+import com.example.ec.presentation.mapper.toResponse
 import com.example.ec.presentation.model.OrderListResponse
 import com.example.ec.presentation.model.PagedOrderListResponse
 import org.springframework.format.annotation.DateTimeFormat
@@ -11,7 +11,6 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import java.time.LocalDateTime
-import java.time.ZoneOffset
 
 /**
  * 注文一覧取得コントローラ
@@ -53,17 +52,4 @@ class OrderListController(
 
         return ResponseEntity.ok(response)
     }
-}
-
-/**
- * OrderListItemView を OrderListResponse に変換する
- */
-private fun OrderListItemView.toResponse(): OrderListResponse {
-    return OrderListResponse(
-        id = id,
-        customerName = customerName,
-        orderDate = orderDate.atOffset(ZoneOffset.UTC),
-        totalAmount = totalAmount.toDouble(),
-        itemCount = itemCount
-    )
 }

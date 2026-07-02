@@ -1,5 +1,6 @@
 package com.example.ec.application.order
 
+import com.example.ec.domain.order.OrderListItem
 import com.example.ec.domain.order.OrderRepository
 import com.example.ec.domain.shared.Page
 import org.springframework.stereotype.Service
@@ -28,7 +29,7 @@ class GetOrdersUseCase(
         customerName: String?,
         page: Int,
         size: Int
-    ): Page<OrderListItemView> {
+    ): Page<OrderListItem> {
         return orderRepository.searchForList(from, to, customerName, page, size)
     }
 }

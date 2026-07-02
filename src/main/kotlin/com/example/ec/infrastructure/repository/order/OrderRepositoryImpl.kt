@@ -1,6 +1,5 @@
 package com.example.ec.infrastructure.repository.order
 
-import com.example.ec.application.order.OrderListItemView
 import com.example.ec.domain.attribute.OrderAttributeValue
 import com.example.ec.domain.customer.Customer
 import com.example.ec.domain.order.Order
@@ -8,6 +7,7 @@ import com.example.ec.domain.order.OrderAttributeJoinedRow
 import com.example.ec.domain.order.OrderBaseRow
 import com.example.ec.domain.order.OrderExportRow
 import com.example.ec.domain.order.OrderItem
+import com.example.ec.domain.order.OrderListItem
 import com.example.ec.domain.order.OrderRepository
 import com.example.ec.domain.order.OrderWithAttributes
 import com.example.ec.domain.shared.ID
@@ -117,7 +117,7 @@ class OrderRepositoryImpl(
         customerName: String?,
         page: Int,
         size: Int
-    ): Page<OrderListItemView> {
+    ): Page<OrderListItem> {
         val whereCondition = buildSearchCondition(from, to, customerName)
 
         // 総件数を取得
@@ -149,7 +149,7 @@ class OrderRepositoryImpl(
             .fetch()
 
         val orderListItems = results.map { record ->
-            OrderListItemView(
+            OrderListItem(
                 id = record.get(ORDER.ID)!!,
                 customerName = record.get(CUSTOMER.NAME) ?: "Unknown",
                 orderDate = record.get(ORDER.ORDER_DATE)!!,
