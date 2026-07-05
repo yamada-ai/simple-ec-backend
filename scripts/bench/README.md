@@ -161,6 +161,25 @@ Date: 2025-12-21 17:00:00
 
 スクリプト完了後、**30-60秒待機してから** Prometheus/Grafana でメトリクスを記録してください。
 
+### 新しい artifact runner
+
+Grafana スクショや手動記録を減らすため、Python runner でも benchmark を実行できます。
+
+```bash
+python3 scripts/bench/run_benchmark.py \
+  --condition baseline \
+  --mode round-robin \
+  --orders 30000 \
+  --attrs 15 \
+  --warmup 5 \
+  --runs 10
+```
+
+この runner は `docs/benchmark/runs/<run-id>/` に `run.json`, `environment.json`, `samples.jsonl`,
+`summary.json`, `summary.md`, `prometheus/range/*.json` を保存します。
+
+詳細は [`docs/benchmark/measurement-design.md`](../../docs/benchmark/measurement-design.md) を参照してください。
+
 ### 記録すべきメトリクス
 
 **1. JVM Heap Peak**（各戦略のメモリ使用量ピーク）:
