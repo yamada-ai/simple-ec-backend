@@ -62,7 +62,7 @@ order_id,customer_name,gift_wrap,delivery_note,campaign_id
 | **multiset** | jOOQ `MULTISET` で親子をネスト取得 | DB 側ネスト化 + jOOQ mapping | $\Theta(A + a_{\text{max}})$ + nested mapping |
 | **sequence-window** | Kotlin `Sequence` + orderId windowing | JVM 側 ordered group fold | $\Theta(A + a_{\text{max}})$ |
 | **spliterator-window** | custom `Spliterator` + orderId windowing | JVM 側 ordered group fold | $\Theta(A + a_{\text{max}})$ |
-| **sql-pivot** | PostgreSQL conditional aggregation | DB 側横展開 | planned |
+| **sql-pivot** | PostgreSQL conditional aggregation | DB 側横展開 | `OrderAttributeCsvRow` に復元 |
 | **imperative-result-set** | JDBC ResultSet に近い手続き baseline | JVM 側 ordered group fold | planned |
 
 戦略ごとの詳細は [docs/strategies.md](docs/strategies.md) を参照。
@@ -254,6 +254,9 @@ curl "http://localhost:8080/api/export/orders/attributes?strategy=sequence-windo
 
 # Spliterator + Windowing 版
 curl "http://localhost:8080/api/export/orders/attributes?strategy=spliterator-window" > orders_spliterator.csv
+
+# SQL Pivot / Conditional Aggregation 版
+curl "http://localhost:8080/api/export/orders/attributes?strategy=sql-pivot" > orders_sql_pivot.csv
 ```
 
 ### ベンチマーク実行（reproducible artifact runner）
@@ -361,6 +364,7 @@ docker ps | grep simple-ec-postgres
   - [x] jOOQ multiset 版
   - [x] Sequence + Windowing 版（sequence-window）
   - [x] Spliterator + Windowing 版（spliterator-window）
+  - [x] SQL Pivot / Conditional Aggregation 版（sql-pivot）
 - [x] Order Attributes CRUD API（属性定義・属性値）
 - [x] Benchmark artifact runner（`scripts/bench/run_benchmark.py`）
 - [x] P0 docs（problem model, strategies, measurement design, talk outline）

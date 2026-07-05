@@ -4,6 +4,7 @@ import com.example.ec.domain.attribute.OrderAttributeValue
 import com.example.ec.domain.customer.Customer
 import com.example.ec.domain.order.Order
 import com.example.ec.domain.order.OrderAttributeJoinedRow
+import com.example.ec.domain.order.OrderAttributePivotRow
 import com.example.ec.domain.order.OrderBaseRow
 import com.example.ec.domain.order.OrderExportRow
 import com.example.ec.domain.order.OrderItem
@@ -23,6 +24,7 @@ import com.example.ec.infrastructure.jooq.tables.references.ORDER_ITEM
 import org.jooq.Record
 import org.jooq.Condition
 import org.jooq.DSLContext
+import org.jooq.Field
 import org.jooq.impl.DSL
 import org.springframework.stereotype.Repository
 import java.time.LocalDateTime
@@ -446,6 +448,68 @@ class OrderRepositoryImpl(
             }
     }
 
+    override fun streamOrdersWithAttributesSqlPivot(
+        from: LocalDateTime?,
+        to: LocalDateTime?,
+        definitionIds: List<Long>
+    ): Stream<OrderAttributePivotRow> {
+        val whereCondition = buildSearchCondition(from, to, null)
+        val pivotFields = definitionIds.map { definitionId ->
+            PivotAttributeField(
+                definitionId = definitionId,
+                field = DSL.max(
+                    DSL.`when`(
+                        ORDER_ATTRIBUTE_VALUE.ATTRIBUTE_DEFINITION_ID.eq(definitionId),
+                        ORDER_ATTRIBUTE_VALUE.VALUE
+                    )
+                ).`as`("attr_$definitionId")
+            )
+        }
+
+        val selectFields = listOf(
+            ORDER.ID,
+            ORDER.CUSTOMER_ID,
+            CUSTOMER.NAME,
+            CUSTOMER.EMAIL,
+            ORDER.ORDER_DATE
+        ) + pivotFields.map { it.field }
+
+        return dsl.select(selectFields)
+            .from(ORDER)
+            .join(CUSTOMER).on(CUSTOMER.ID.eq(ORDER.CUSTOMER_ID))
+            .leftJoin(ORDER_ATTRIBUTE_VALUE).on(ORDER_ATTRIBUTE_VALUE.ORDER_ID.eq(ORDER.ID))
+            .where(whereCondition)
+            .groupBy(
+                ORDER.ID,
+                ORDER.CUSTOMER_ID,
+                CUSTOMER.NAME,
+                CUSTOMER.EMAIL,
+                ORDER.ORDER_DATE
+            )
+            .orderBy(ORDER.ID.asc())
+            .fetchSize(EXPORT_FETCH_SIZE)
+            .fetchStream()
+            .map { record -> mapToOrderAttributePivotRow(record, pivotFields) }
+    }
+
+    private fun mapToOrderAttributePivotRow(
+        record: Record,
+        pivotFields: List<PivotAttributeField>
+    ): OrderAttributePivotRow {
+        val attributes = pivotFields.mapNotNull { pivot ->
+            record.get(pivot.field)?.let { value -> pivot.definitionId to value }
+        }.toMap()
+
+        return OrderAttributePivotRow(
+            orderId = record.get(ORDER.ID)!!,
+            customerId = record.get(ORDER.CUSTOMER_ID)!!,
+            customerName = record.get(CUSTOMER.NAME)!!,
+            customerEmail = record.get(CUSTOMER.EMAIL)!!,
+            orderDate = record.get(ORDER.ORDER_DATE)!!,
+            attributes = attributes
+        )
+    }
+
     override fun streamOrdersBase(
         from: LocalDateTime?,
         to: LocalDateTime?
@@ -505,3 +569,8 @@ class OrderRepositoryImpl(
         private const val EXPORT_FETCH_SIZE = 1_000
     }
 }
+
+private data class PivotAttributeField(
+    val definitionId: Long,
+    val field: Field<String?>
+)

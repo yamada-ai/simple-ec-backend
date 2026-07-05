@@ -34,7 +34,7 @@ class AttributeExportIntegrationTest(
         SqlTestHelper.executeSqlFile(jdbcTemplate, "sql/attribute-export-data.sql")
     }
 
-    listOf("sequence-window", "spliterator-window", "multiset", "preload").forEach { strategy ->
+    listOf("sequence-window", "spliterator-window", "multiset", "preload", "sql-pivot").forEach { strategy ->
         test("GET /api/export/orders/attributes ($strategy) returns expected CSV") {
             val response = restTemplate.getForEntity<String>("/api/export/orders/attributes?strategy=$strategy")
 

@@ -103,6 +103,54 @@ docs/benchmark/runs/after_cursor_spliterator_window_isolated_5000x15_20260705_18
 - Prometheus counter 系の `Increase` は backend restart と scrape 境界の影響を受けるため、この予備確認では heap used max と MD5/elapsed を主に見る。
 - 正式な resource profile には isolated runner と JFR / GC log の整備が必要である。
 
+## SQL Pivot 追加後の smoke 解釈メモ
+
+この run は正式な性能測定結果ではない。
+
+SQL Pivot 戦略を追加した直後に、全5戦略の疎通、MD5同一性、round-robin runner の動作を確認するために実行した。
+
+実行ディレクトリ:
+
+```text
+docs/benchmark/runs/sql_pivot_smoke_5000x15_20260705_1925/
+```
+
+条件:
+
+| Variable | Value |
+| --- | ---: |
+| $N$ | 5,000 |
+| $A$ | 15 |
+| $V$ | 75,000 |
+| $B$ | 5 |
+| $S = N (A + B)$ | 100,000 cells |
+| warmup | 1 |
+| measurement | 3 |
+
+処理時間:
+
+| Strategy | Samples | Median ms | IQR ms | Min ms | Max ms | MD5 matched |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| preload | 3 | 95 | 34 | 94 | 128 | yes |
+| sql-pivot | 3 | 103 | 4 | 102 | 106 | yes |
+| spliterator-window | 3 | 133 | 11 | 130 | 141 | yes |
+| sequence-window | 3 | 138 | 2 | 137 | 139 | yes |
+| multiset | 3 | 265 | 18 | 260 | 278 | yes |
+
+解釈:
+
+- この規模では `preload` と `sql-pivot` がほぼ同着で速い。$N=5{,}000, A=15, V=75{,}000$ では `preload` の $\Theta(V)$ メモリ保持がまだ支配的になりにくく、DB側で横展開して1回で返す `sql-pivot` と並ぶのは自然である。
+- `preload` の 128ms は measurement 1回目だけの外れ値で、2回目と3回目は 94ms / 95ms である。measurement=3 では IQR は外れ値1つで大きく歪むため、IQRの戦略間比較には使わない。
+- `multiset` は warmup 516ms から measurement median 265ms まで大きく下がった。`MULTISET` は warmup の効き方が大きい可能性があるため、正式runでは warmup=5 以上、measurement=10 以上で確認する。
+- round-robin の開始戦略は round ごとにローテートしており、順序バイアスを減らす runner の意図はこの run でも機能している。
+
+Wide 条件での注意:
+
+- `sql-pivot` が $A$ 増加で失速した場合、DB側の `MAX(CASE WHEN ...)` 評価だけを原因にしない。
+- 実装上、`OrderRepositoryImpl.mapToOrderAttributePivotRow()` は1注文行ごとに全 `pivotFields` を `record.get(pivot.field)` で走査し、`Map<Long, String>` へ戻している。したがって JVM側の pivot row mapping も $\Theta(N \cdot A)$ である。
+- `sequence-window` / `spliterator-window` はDBから縦持ちで受け取り、現在の注文に存在する属性を畳み込む。一方 `sql-pivot` はDBから密な $A$ 列を受け取るため、Wide条件では DB CPU、jOOQ `Record.get()`、allocation、CSV writer のどこが支配的かを分けて見る必要がある。
+- 正式なWide比較では elapsed だけでなく、heap peak、allocation、GC pause、可能なら `EXPLAIN (ANALYZE, BUFFERS)` と JFR allocation profile を合わせて確認する。
+
 ## Formal Result Slots（正式測定の記入枠）
 
 正式な run は、生成され次第ここに追加していく。

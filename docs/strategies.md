@@ -31,7 +31,7 @@ OrderAttributeExportService
 | MULTISET | DB + jOOQ mapping + JVM CSV projection | ネスト済み属性を持つ $N$ 行 | $\Theta(A + a_{\text{max}})$ + nested mapping | JSONB emulation、nested materialization |
 | SEQUENCE_WINDOW | JVM ordered group fold | 縦持ち JOIN 済み行 | $\Theta(A + a_{\text{max}})$ | ordered streaming、注文ごとの Map |
 | SPLITERATOR_WINDOW | JVM ordered group fold | 縦持ち JOIN 済み行 | $\Theta(A + a_{\text{max}})$ | custom Spliterator の状態機械 |
-| SQL Pivot | DB | 横持ちの $N$ 行 | direct-to-CSV なら小さい | conditional aggregation、巨大な動的 SELECT |
+| SQL Pivot | DB | 横持ちの $N$ 行 | 現行実装では `OrderAttributeCsvRow` に復元 | conditional aggregation、巨大な動的 SELECT |
 | JSON aggregation | DB + JSON parse | JSON オブジェクトを持つ $N$ 行 | parse 対象に依存 | JSONB object aggregation と parse |
 | Imperative ResultSet | JVM ordered group fold | 縦持ち JOIN 済み行 | $\Theta(A + a_{\text{max}})$ | 最も低レベルな app baseline |
 | Direct Writer | CSV layer | 取得元に依存 | 行あたりの allocation を削減 | escaping / writer の正しさ |
@@ -199,9 +199,9 @@ order_id asc, attribute_definition_id asc
 
 ## SQL Pivot
 
-状態: 未実装（計画中）。
+状態: 実装済み。
 
-### やること（予定）
+### やっていること
 
 属性定義から動的に conditional aggregation のフィールドを生成する。
 
@@ -236,7 +236,7 @@ order by order.id
 
 - JVM は注文ごとに1行だけ受け取る。
 - JVM 側で主要な横展開を行う必要がない。
-- CSV を `Record` から直接書き出すなら自然な形。
+- PostgreSQL 側で横持ち化した結果を、既存の `OrderAttributeCsvRow` に戻して共通 writer に載せられる。
 
 ### 短所
 
@@ -244,6 +244,7 @@ order by order.id
 - DB が conditional aggregation のコストを払う。
 - 動的な SELECT は型付き DTO にしづらい。
 - クエリプランと DB CPU が支配的になる。
+- 現行実装では既存 interface を維持するため、DB 側で横展開した結果を JVM 側で `Map<DefinitionId, Value>` に戻している。
 
 ### 向いている場面
 

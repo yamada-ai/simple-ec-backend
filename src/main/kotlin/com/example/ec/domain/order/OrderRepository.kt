@@ -122,4 +122,13 @@ interface OrderRepository {
         from: LocalDateTime?,
         to: LocalDateTime?
     ): Stream<OrderWithAttributes>
+
+    /**
+     * SQL Pivot 用: 属性定義ごとの conditional aggregation で横持ち化して取得
+     */
+    fun streamOrdersWithAttributesSqlPivot(
+        from: LocalDateTime?,
+        to: LocalDateTime?,
+        definitionIds: List<Long>
+    ): Stream<OrderAttributePivotRow>
 }

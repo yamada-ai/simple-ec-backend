@@ -108,7 +108,7 @@ python3 scripts/bench/run_benchmark.py \
 | `--attrs` | `15` | Expected attribute definition count |
 | `--warmup` | `5` | Warmup rounds |
 | `--runs` | `10` | Measurement rounds |
-| `--strategies` | all 4 current strategies | Comma or space separated strategy names |
+| `--strategies` | all current strategies | Comma or space separated strategy names |
 | `--metrics-wait` | `30` | Wait after run before Prometheus collection |
 | `--sample-wait` | `0` | Wait between samples |
 | `--skip-data-check` | false | Skip `/admin/summary` validation |
