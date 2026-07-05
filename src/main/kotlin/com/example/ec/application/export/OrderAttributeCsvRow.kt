@@ -1,6 +1,8 @@
 package com.example.ec.application.export
 
 import com.example.ec.domain.order.OrderAttributeJoinedRow
+import com.example.ec.domain.order.OrderBaseRow
+import com.example.ec.domain.order.OrderWithAttributes
 import java.time.LocalDateTime
 
 /**
@@ -14,8 +16,8 @@ data class OrderAttributeCsvRow(
     val orderDate: LocalDateTime,
     val attributes: Map<Long, String>
 ) {
-    fun toRecord(definitionIds: List<Long>): List<String> {
-        val values = definitionIds.map { defId -> attributes[defId] ?: "" }
+    fun toRecord(schema: OrderAttributeExportSchema): List<String> {
+        val values = schema.definitionIds.map { defId -> attributes[defId] ?: "" }
         return listOf(
             orderId.toString(),
             customerId.toString(),
@@ -36,4 +38,26 @@ data class OrderAttributeCsvRow(
                 attributes = attributeValues
             )
     }
+}
+
+fun OrderBaseRow.toCsvRow(attributeValues: Map<Long, String>): OrderAttributeCsvRow {
+    return OrderAttributeCsvRow(
+        orderId = orderId,
+        customerId = customerId,
+        customerName = customerName,
+        customerEmail = customerEmail,
+        orderDate = orderDate,
+        attributes = attributeValues
+    )
+}
+
+fun OrderWithAttributes.toCsvRow(): OrderAttributeCsvRow {
+    return OrderAttributeCsvRow(
+        orderId = orderId,
+        customerId = customerId,
+        customerName = customerName,
+        customerEmail = customerEmail,
+        orderDate = orderDate,
+        attributes = attributes.associate { it.attributeDefinitionId.value to it.value }
+    )
 }
