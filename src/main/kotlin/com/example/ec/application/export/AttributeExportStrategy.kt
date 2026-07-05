@@ -5,7 +5,8 @@ enum class AttributeExportStrategy {
     SEQUENCE_WINDOW,
     SPLITERATOR_WINDOW,
     PRELOAD,
-    SQL_PIVOT;
+    SQL_PIVOT,
+    IMPERATIVE_RESULT_SET;
 
     companion object {
         fun from(value: String): AttributeExportStrategy {

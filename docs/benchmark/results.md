@@ -151,6 +151,48 @@ Wide 条件での注意:
 - `sequence-window` / `spliterator-window` はDBから縦持ちで受け取り、現在の注文に存在する属性を畳み込む。一方 `sql-pivot` はDBから密な $A$ 列を受け取るため、Wide条件では DB CPU、jOOQ `Record.get()`、allocation、CSV writer のどこが支配的かを分けて見る必要がある。
 - 正式なWide比較では elapsed だけでなく、heap peak、allocation、GC pause、可能なら `EXPLAIN (ANALYZE, BUFFERS)` と JFR allocation profile を合わせて確認する。
 
+## Imperative ResultSet 追加後の smoke 解釈メモ
+
+この run は正式な性能測定結果ではない。
+
+`Sequence` / `Spliterator` / jOOQ `Record` mapping を避けた ordered group fold baseline として、`imperative-result-set` を追加した直後の疎通確認である。
+
+実行ディレクトリ:
+
+```text
+docs/benchmark/runs/imperative_resultset_smoke_5000x15_20260705_1951/
+```
+
+条件:
+
+| Variable | Value |
+| --- | ---: |
+| $N$ | 5,000 |
+| $A$ | 15 |
+| $V$ | 75,000 |
+| $B$ | 5 |
+| $S = N (A + B)$ | 100,000 cells |
+| warmup | 1 |
+| measurement | 3 |
+
+処理時間:
+
+| Strategy | Samples | Median ms | IQR ms | Min ms | Max ms | MD5 matched |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| preload | 3 | 101 | 17 | 94 | 111 | yes |
+| sql-pivot | 3 | 109 | 12 | 103 | 115 | yes |
+| imperative-result-set | 3 | 126 | 7 | 122 | 129 | yes |
+| sequence-window | 3 | 134 | 7 | 132 | 139 | yes |
+| spliterator-window | 3 | 137 | 4 | 134 | 138 | yes |
+| multiset | 3 | 263 | 31 | 255 | 286 | yes |
+
+解釈:
+
+- 全戦略で MD5 が一致したため、`imperative-result-set` は既存戦略と同じCSVを生成できている。
+- この小規模runでは `imperative-result-set` が window系より少し速い。ただし measurement=3 なので、差を結論として扱うには不十分である。
+- `imperative-result-set` は jOOQ `Record` 生成と Kotlin `Sequence` / Java `Spliterator` の抽象を避ける。そのため、正式測定では「ordered group fold 自体のコスト」と「抽象・mappingのコスト」を分離する比較点として使う。
+- コードの保守性は他戦略より低い。SQL文字列、parameter binding、ResultSet close を手で持つため、実務実装として推すのではなく baseline として扱う。
+
 ## Formal Result Slots（正式測定の記入枠）
 
 正式な run は、生成され次第ここに追加していく。

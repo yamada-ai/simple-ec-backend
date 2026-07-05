@@ -16,6 +16,8 @@ OrderAttributeExportService
      -> MultisetOrderAttributeRowSource
      -> SequenceWindowOrderAttributeRowSource
      -> SpliteratorWindowOrderAttributeRowSource
+     -> SqlPivotOrderAttributeRowSource
+     -> ImperativeResultSetOrderAttributeRowSource
   -> OrderAttributeCsvWriter
 ```
 
@@ -283,11 +285,13 @@ jsonb_object_agg(attribute_definition_id, value)
 
 ## Imperative ResultSet Baseline
 
-状態: 未実装（計画中）。
+状態: 実装済み。
 
-### やること（予定）
+### やっていること
 
-`Sequence` / `Spliterator` / jOOQ `Record` mapping を使わず、同じ ordered group fold を実装する。
+`Sequence` / `Spliterator` / jOOQ `Record` mapping を使わず、同じ ordered group fold を `PreparedStatement` / `ResultSet` で実装する。
+
+既存の `OrderAttributeRowSource` と `OrderAttributeCsvWriter` は維持し、ResultSet から1注文ずつ `OrderAttributeCsvRow` を emit する。
 
 擬似コード:
 
@@ -302,17 +306,26 @@ while (rs.next()) {
 flushCurrentOrder()
 ```
 
+実装上の注意:
+
+- `OrderAttributeExportService.writeCsv()` の read-only transaction 内で消費する。
+- `PreparedStatement.fetchSize = 1000` を指定する。
+- DBからの行順は `order_id asc, attribute_definition_id asc` を前提にする。
+- ResultSetのリソースは `CloseableSequence.use { ... }` で閉じる。
+
 ### 長所
 
 - アルゴリズムのコストと抽象化のコストを分離できる。
 - allocation と elapsed time の低レベルな baseline になる。
 - `Sequence` のオーバーヘッドが実際に効くかどうかを判断するのに有用。
+- jOOQ `Record` 生成・mapping を避けた場合の下限に近いかを確認する比較点になる。
 
 ### 短所
 
 - リソース管理をより手動で行う必要がある。
 - アプリケーションコードとしては idiomatic ではない。
 - 正しさを間違えやすい。
+- SQL文字列、parameter binding、cursor close を手で管理するため、保守性は他戦略より低い。
 
 ### 向いている場面
 

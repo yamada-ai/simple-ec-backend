@@ -10,7 +10,7 @@
 
 推奨 runner。
 
-4戦略を round-robin で実行し、benchmark API の JSON と Prometheus range query を run artifact として保存する。
+現行の全戦略を round-robin で実行し、benchmark API の JSON と Prometheus range query を run artifact として保存する。
 
 保存先:
 
