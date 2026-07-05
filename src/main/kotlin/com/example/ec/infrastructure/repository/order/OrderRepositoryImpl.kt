@@ -385,21 +385,25 @@ class OrderRepositoryImpl(
             .where(whereCondition)
             .orderBy(ORDER.ID.asc())
             .fetchStream()
-            .map { record -> mapToOrderWithAttributes(record, attributesField) }
+            .map { record ->
+                mapToOrderWithAttributes(
+                    record = record,
+                    attributes = record.get(attributesField) ?: emptyList()
+                )
+            }
     }
 
     private fun mapToOrderWithAttributes(
         record: Record,
-        attributesField: org.jooq.Field<List<OrderAttributeValue>>
+        attributes: List<OrderAttributeValue>
     ): OrderWithAttributes {
-        val attrs = record.get(attributesField) ?: emptyList()
         return OrderWithAttributes(
             orderId = record.get(ORDER.ID)!!,
             customerId = record.get(ORDER.CUSTOMER_ID)!!,
             customerName = record.get(CUSTOMER.NAME)!!,
             customerEmail = record.get(CUSTOMER.EMAIL)!!,
             orderDate = record.get(ORDER.ORDER_DATE)!!,
-            attributes = attrs
+            attributes = attributes
         )
     }
 
