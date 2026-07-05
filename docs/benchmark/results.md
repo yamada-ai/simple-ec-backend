@@ -56,6 +56,53 @@ docs/benchmark/runs/smoke_100x5_20260705-144001/
 - `MULTISET` はこの小規模実行でも固定オーバーヘッドを示しており、仮説生成として有用である。
 - 正式な結果には、より大きいデータセット、十分な測定サンプル数、リソースメトリクスが必要である。
 
+## Cursor / fetchSize 修正の予備確認
+
+PostgreSQL JDBC の cursor 条件を満たすため、`fetchStream()` を使う export query に `fetchSize(1000)` を指定し、CSV 書き込み全体を read-only transaction 内で実行するようにした。
+
+あわせて、`SEQUENCE_WINDOW` / `SPLITERATOR_WINDOW` が使っていなかった `order_attribute_definition` JOIN を削除した。
+
+この確認は正式 benchmark ではなく、修正前後で以下を確認するための予備測定である。
+
+- MD5 が一致すること
+- elapsed が大きく悪化しないこと
+- heap peak が悪化しないこと
+
+条件:
+
+| Variable | Value |
+| --- | ---: |
+| $N$ | 5,000 |
+| $A$ | 15 |
+| $V$ | 75,000 |
+| $S = N (A + B)$ | 100,000 cells |
+| warmup | 1 |
+| measurement | 3 |
+| backend restart | strategy ごとに実施 |
+
+実行ディレクトリ:
+
+```text
+docs/benchmark/runs/before_cursor_sequence_window_isolated_5000x15_20260705_1759/
+docs/benchmark/runs/after_cursor_sequence_window_isolated_5000x15_20260705_1802/
+docs/benchmark/runs/before_cursor_spliterator_window_isolated_5000x15_20260705_1800/
+docs/benchmark/runs/after_cursor_spliterator_window_isolated_5000x15_20260705_1803/
+```
+
+概要:
+
+| Strategy | Revision | Median ms | Min ms | Max ms | Heap used max | MD5 matched |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| sequence-window | before | 158 | 156 | 250 | 224.9 MB | yes |
+| sequence-window | after | 176 | 148 | 202 | 217.9 MB | yes |
+| spliterator-window | before | 175 | 167 | 279 | 301.8 MB | yes |
+| spliterator-window | after | 153 | 133 | 189 | 217.8 MB | yes |
+
+注意:
+
+- Prometheus counter 系の `Increase` は backend restart と scrape 境界の影響を受けるため、この予備確認では heap used max と MD5/elapsed を主に見る。
+- 正式な resource profile には isolated runner と JFR / GC log の整備が必要である。
+
 ## Formal Result Slots（正式測定の記入枠）
 
 正式な run は、生成され次第ここに追加していく。

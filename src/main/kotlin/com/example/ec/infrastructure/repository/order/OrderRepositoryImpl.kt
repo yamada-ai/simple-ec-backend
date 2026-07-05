@@ -18,7 +18,6 @@ import com.example.ec.infrastructure.jooq.tables.records.OrderItemRecord
 import com.example.ec.infrastructure.jooq.tables.records.OrderRecord
 import com.example.ec.infrastructure.jooq.tables.references.CUSTOMER
 import com.example.ec.infrastructure.jooq.tables.references.ORDER
-import com.example.ec.infrastructure.jooq.tables.references.ORDER_ATTRIBUTE_DEFINITION
 import com.example.ec.infrastructure.jooq.tables.references.ORDER_ATTRIBUTE_VALUE
 import com.example.ec.infrastructure.jooq.tables.references.ORDER_ITEM
 import org.jooq.Record
@@ -330,6 +329,7 @@ class OrderRepositoryImpl(
             .join(ORDER_ITEM).on(ORDER_ITEM.ORDER_ID.eq(ORDER.ID))
             .where(whereCondition)
             .orderBy(ORDER.ORDER_DATE.desc(), ORDER.ID.desc(), ORDER_ITEM.ID.desc())
+            .fetchSize(EXPORT_FETCH_SIZE)
             .fetchStream()
             .map { record ->
                 OrderExportRow(
@@ -384,6 +384,7 @@ class OrderRepositoryImpl(
             .join(CUSTOMER).on(CUSTOMER.ID.eq(ORDER.CUSTOMER_ID))
             .where(whereCondition)
             .orderBy(ORDER.ID.asc())
+            .fetchSize(EXPORT_FETCH_SIZE)
             .fetchStream()
             .map { record ->
                 mapToOrderWithAttributes(
@@ -420,20 +421,17 @@ class OrderRepositoryImpl(
             CUSTOMER.EMAIL,
             ORDER.ORDER_DATE,
             ORDER_ATTRIBUTE_VALUE.ATTRIBUTE_DEFINITION_ID,
-            ORDER_ATTRIBUTE_DEFINITION.NAME,
-            ORDER_ATTRIBUTE_DEFINITION.LABEL,
             ORDER_ATTRIBUTE_VALUE.VALUE
         )
             .from(ORDER)
             .join(CUSTOMER).on(CUSTOMER.ID.eq(ORDER.CUSTOMER_ID))
             .leftJoin(ORDER_ATTRIBUTE_VALUE).on(ORDER_ATTRIBUTE_VALUE.ORDER_ID.eq(ORDER.ID))
-            .leftJoin(ORDER_ATTRIBUTE_DEFINITION)
-            .on(ORDER_ATTRIBUTE_DEFINITION.ID.eq(ORDER_ATTRIBUTE_VALUE.ATTRIBUTE_DEFINITION_ID))
             .where(whereCondition)
             .orderBy(
                 ORDER.ID.asc(),
                 ORDER_ATTRIBUTE_VALUE.ATTRIBUTE_DEFINITION_ID.asc()
             )
+            .fetchSize(EXPORT_FETCH_SIZE)
             .fetchStream()
             .map { record ->
                 OrderAttributeJoinedRow(
@@ -443,8 +441,6 @@ class OrderRepositoryImpl(
                     customerEmail = record.get(CUSTOMER.EMAIL)!!,
                     orderDate = record.get(ORDER.ORDER_DATE)!!,
                     definitionId = record.get(ORDER_ATTRIBUTE_VALUE.ATTRIBUTE_DEFINITION_ID),
-                    definitionName = record.get(ORDER_ATTRIBUTE_DEFINITION.NAME),
-                    definitionLabel = record.get(ORDER_ATTRIBUTE_DEFINITION.LABEL),
                     value = record.get(ORDER_ATTRIBUTE_VALUE.VALUE)
                 )
             }
@@ -467,6 +463,7 @@ class OrderRepositoryImpl(
             .join(CUSTOMER).on(CUSTOMER.ID.eq(ORDER.CUSTOMER_ID))
             .where(whereCondition)
             .orderBy(ORDER.ID.asc())
+            .fetchSize(EXPORT_FETCH_SIZE)
             .fetchStream()
             .map { record ->
                 OrderBaseRow(
@@ -502,5 +499,9 @@ class OrderRepositoryImpl(
                 }
             )
             .mapValues { (_, pairs) -> pairs.toMap() }
+    }
+
+    companion object {
+        private const val EXPORT_FETCH_SIZE = 1_000
     }
 }

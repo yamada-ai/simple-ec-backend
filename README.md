@@ -85,7 +85,7 @@ order_id,customer_name,gift_wrap,delivery_note,campaign_id
 | メモリ制限 | 512MB | `-Xmx512m` |
 | 測定データセット | 3条件 | Baseline/Sparse/Wide（詳細は下記） |
 | 測定系統 | round-robin artifact | `samples.jsonl` + Prometheus range data |
-| fetchSize / cursor | TODO | PostgreSQL JDBC の streaming 条件を確認予定 |
+| fetchSize / cursor | `fetchSize=1000` + read-only transaction | PostgreSQL JDBC の cursor 条件を満たす export stream query |
 
 **データセット詳細**:
 

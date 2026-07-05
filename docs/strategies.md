@@ -159,6 +159,8 @@ order_id asc, attribute_definition_id asc
 
 同一の `order_id` が分断された複数グループとして現れると、同じ注文が複数の CSV 行として emit されてしまう。
 
+また、PostgreSQL JDBC で実際に streaming するには、`fetchSize > 0` と transaction 境界が必要である。現行実装では export query に `fetchSize(1000)` を指定し、CSV 書き込み全体を read-only transaction 内で実行する。
+
 ### 向いている場面
 
 - $V$ が大きく、PRELOAD のメモリリスクが高い場合。

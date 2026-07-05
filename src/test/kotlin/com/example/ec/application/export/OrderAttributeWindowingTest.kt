@@ -98,8 +98,6 @@ private fun joinedRow(
         customerEmail = "customer-$orderId@example.com",
         orderDate = LocalDateTime.of(2026, 1, 1, 0, 0),
         definitionId = definitionId,
-        definitionName = definitionId?.let { "attr_$it" },
-        definitionLabel = definitionId?.let { "属性$it" },
         value = value
     )
 }

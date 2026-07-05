@@ -12,7 +12,5 @@ data class OrderAttributeJoinedRow(
     val customerEmail: String,
     val orderDate: LocalDateTime,
     val definitionId: Long?,
-    val definitionName: String?,
-    val definitionLabel: String?,
     val value: String?
 )

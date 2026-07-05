@@ -1,6 +1,5 @@
 package com.example.ec.presentation.controller
 
-import com.example.ec.application.export.OrderCsvRow
 import com.example.ec.application.export.OrderExportService
 import com.example.ec.presentation.api.ExportApi
 import com.example.ec.presentation.streaming.CsvStreamResponseFactory
@@ -34,16 +33,7 @@ class ExportApiController(
         logger.info("Starting CSV export: from=$from, to=$to, strategy=$strategy (ignored in Phase 1)")
 
         return csvStreamResponseFactory.streamCsv("orders_export", "csv-export") { writer ->
-            writer.println(OrderCsvRow.CSV_HEADER)
-
-            var rowCount = 0
-            orderExportService.exportOrders(from, to).use { stream ->
-                stream.forEach { row ->
-                    writer.println(row.toCsvLine())
-                    rowCount++
-                }
-            }
-
+            val rowCount = orderExportService.writeCsv(from, to, writer)
             logger.info("CSV export completed: rows=$rowCount")
         }
     }

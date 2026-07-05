@@ -2,6 +2,7 @@ package com.example.ec.application.export
 
 import com.example.ec.domain.attribute.OrderAttributeDefinitionRepository
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 import java.io.PrintWriter
 import java.time.LocalDateTime
 
@@ -24,6 +25,7 @@ class OrderAttributeExportService(
         }
     }
 
+    @Transactional(readOnly = true)
     fun writeCsv(
         from: LocalDateTime?,
         to: LocalDateTime?,

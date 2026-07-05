@@ -110,6 +110,14 @@ $$
 
 アルゴリズムや遅延評価によって、存在しない属性値の DB 読み取りは減らせる。しかし、最終的な CSV 上の空セル出力は消せない。
 
+現行実装では、この $N \cdot A$ の列埋めは `OrderAttributeCsvRow.toRecord()` に集約されている。
+
+```kotlin
+val values = schema.definitionIds.map { defId -> attributes[defId] ?: "" }
+```
+
+PRELOAD / MULTISET / SEQUENCE_WINDOW / SPLITERATOR_WINDOW は取得戦略こそ異なるが、固定ヘッダ CSV として出力する直前には同じ列順で属性セルを埋める。このため、取得戦略を変えても dense output の下界そのものは消えない。
+
 ## Cost Decomposition
 
 総時間を大まかに次のように分ける。

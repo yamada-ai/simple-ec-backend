@@ -2,6 +2,8 @@ package com.example.ec.application.export
 
 import com.example.ec.domain.order.OrderRepository
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
+import java.io.PrintWriter
 import java.time.LocalDateTime
 import java.util.stream.Stream
 
@@ -22,7 +24,7 @@ class OrderExportService(
      * @param to 注文日の終了日時（inclusive）
      * @return CSV行のストリーム
      */
-    fun exportOrders(
+    private fun exportOrders(
         from: LocalDateTime?,
         to: LocalDateTime?
     ): Stream<OrderCsvRow> {
@@ -40,5 +42,30 @@ class OrderExportService(
                     unitPrice = row.unitPrice
                 )
             }
+    }
+
+    /**
+     * CSVへの書き込みまでトランザクション内で完結させる。
+     *
+     * PostgreSQL JDBC の cursor は transaction 境界内で stream を消費する必要があるため、
+     * Streamを返して呼び出し元で消費する形にはしない。
+     */
+    @Transactional(readOnly = true)
+    fun writeCsv(
+        from: LocalDateTime?,
+        to: LocalDateTime?,
+        writer: PrintWriter
+    ): Int {
+        writer.println(OrderCsvRow.CSV_HEADER)
+
+        var rowCount = 0
+        exportOrders(from, to).use { stream ->
+            stream.forEach { row ->
+                writer.println(row.toCsvLine())
+                rowCount++
+            }
+        }
+
+        return rowCount
     }
 }
