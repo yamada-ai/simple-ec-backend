@@ -376,17 +376,15 @@ docker ps | grep simple-ec-postgres
   - [x] PostgreSQL JSON aggregation 版（json-aggregation）
 - [x] Order Attributes CRUD API（属性定義・属性値）
 - [x] Benchmark artifact runner（`scripts/bench/run_benchmark.py`）
+- [x] Docker-based chart generation（`bench-charts`）
 - [x] P0 docs（problem model, strategies, measurement design, talk outline）
 
 ### 今後の拡張案
 
 - [ ] Baseline / Sparse / Wide の formal benchmark
-- [ ] Chart generation
-- [ ] SQL Pivot strategy
-- [ ] Imperative ResultSet baseline
+- [ ] Cross-run chart generation
 - [ ] JFR / EXPLAIN artifacts
 - [ ] Direct Writer comparison
-- [ ] JSON aggregation strategy
 
 ## 📖 参考資料
 

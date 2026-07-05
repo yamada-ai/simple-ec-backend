@@ -36,6 +36,33 @@ Prometheus は heap / GC / allocation / CPU の補助時系列として使う。
 
 Admin API 経由で benchmark 用データを投入する薄い wrapper。
 
+### `charts.py`
+
+run artifact から発表・記事用の静的チャートを生成する。
+
+ホストの Python 環境には依存せず、Docker Compose の `bench-charts` service から実行する。
+
+```bash
+docker compose run --rm bench-charts \
+  --run-dir docs/benchmark/runs/<run-id>
+```
+
+出力先:
+
+```text
+docs/benchmark/runs/<run-id>/charts/
+  elapsed-median-iqr.svg
+  elapsed-median-iqr.png
+  elapsed-samples.svg
+  elapsed-samples.png
+  heap-used-over-time.svg
+  gc-pause-over-time.svg
+  allocation-rate-over-time.svg
+  process-cpu-over-time.svg
+```
+
+SVG は登壇資料や記事での再利用、PNG はプレビュー用途を想定する。
+
 ### `run_benchmark.sh`
 
 旧 runner。
@@ -133,6 +160,13 @@ environment.json
 `samples.jsonl` is the source of truth for elapsed time and MD5 equality.
 
 Prometheus files are useful for run-wide resource interpretation. In round-robin mode, heap / GC / allocation are not strictly attributable to a single strategy.
+
+Charts can be regenerated from the same run directory:
+
+```bash
+docker compose run --rm bench-charts \
+  --run-dir docs/benchmark/runs/<run-id>
+```
 
 ## Run Type Policy
 

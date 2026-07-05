@@ -305,6 +305,13 @@ docs/benchmark/runs/json_aggregation_smoke_5000x15_20260705_2002/
 
 チャートは Grafana のスクリーンショットをコピーするのではなく、生のrun artifactから生成すべきである。
 
+生成方法:
+
+```bash
+docker compose run --rm bench-charts \
+  --run-dir docs/benchmark/runs/<run-id>
+```
+
 初期チャートセット:
 
 - strategy別 elapsed median + IQR
@@ -312,6 +319,12 @@ docs/benchmark/runs/json_aggregation_smoke_5000x15_20260705_2002/
 - heap used の時系列
 - GC pause の時系列
 - allocation rate の時系列
+- process CPU の時系列
+
+今後追加するチャート:
+
 - strategy resource placement matrix
+- Baseline / Sparse / Wide の横断比較
+- $A$ scaling / $N$ scaling
 
 Grafana はライブ観測には引き続き有用である。記事・発表の一次情報源は run artifact ディレクトリとする。

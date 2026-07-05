@@ -73,6 +73,16 @@ services:
       flyway:
         condition: service_completed_successfully
 
+  bench-charts:
+    build:
+      context: .
+      dockerfile: docker/bench-charts/Dockerfile
+    profiles:
+      - tools
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+
   flyway:
     image: flyway/flyway:10
     container_name: simple-ec-flyway
