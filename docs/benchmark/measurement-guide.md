@@ -1,28 +1,34 @@
 # ベンチマーク測定ガイド
 
+> Current note:
+> 発表・記事用の再分析可能な記録は `scripts/bench/run_benchmark.py` と
+> `docs/benchmark/runs/<run-id>/` の artifact を正とする。
+> このファイルには旧 `run_benchmark.sh` ベースの手順が含まれているため、
+> 新しい測定設計は [measurement-design.md](measurement-design.md) を参照する。
+
 本ドキュメントでは、動的列CSV出力の4戦略（PRELOAD / MULTISET / SEQUENCE_WINDOW / SPLITERATOR_WINDOW）のベンチマーク測定手順を説明する。
 
 ## 測定設計の概要
 
 ### データセット（3条件）
 
-| 条件 | N | A | 密度（ā） | V (属性値総数) | 検証目的 |
+| 条件 | $N$ | $A$ | 密度（$\bar{a}$） | $V$ (属性値総数) | 検証目的 |
 |------|---|---|----------|--------------|----------|
 | **Baseline** | 30,000 | 15 | Dense (15) | 450,000 | 基準測定 |
-| **Sparse** | 30,000 | 15 | Sparse (2) | 60,000 | メモリ差（V vs a_max） |
-| **Wide** | 30,000 | 120 | Dense (120) | 3,600,000 | N·A 支配の検証 |
+| **Sparse** | 30,000 | 15 | Sparse (2) | 60,000 | メモリ差（$V$ vs $a_{\text{max}}$） |
+| **Wide** | 30,000 | 120 | Dense (120) | 3,600,000 | $N \cdot A$ 支配の検証 |
 
 ### 測定系統（2系統）
 
 **系統1: Compute測定（主軸）**
 - エンドポイント: `/api/export/orders/attributes/benchmark`
 - 出力先: NullOutputStream + DigestOutputStream（MD5）
-- 目的: I/O を除いた純粋な計算コスト（T_DB + T_app）を測定
+- 目的: I/O を除いた純粋な計算コスト（$T_{\text{DB}} + T_{\text{app}}$）を測定
 
 **系統2: 実ファイル出力（参考）**
 - エンドポイント: `/api/export/orders/attributes`
 - 出力先: 実ファイル（CSV）
-- 目的: I/O を含む現実の処理時間（T_DB + T_app + T_IO）を測定
+- 目的: I/O を含む現実の処理時間（$T_{\text{DB}} + T_{\text{app}} + T_{\text{IO}}$）を測定
 
 ### 測定方法
 

@@ -1,64 +1,82 @@
-# Simple EC Backend
+# Simple EC Backend: 1-to-Many Wide CSV Export Lab
 
-Kotlin + Spring Boot で作る、Stream/Sequence パフォーマンス比較実験用の小規模 EC バックエンド。
+Kotlin/JVM で **1対多データを固定ヘッダ CSV へ横展開する設計と性能**を検証する実験用 EC バックエンド。
 
 ## プロジェクト概要
 
-このプロジェクトは、**Kotlin Sequence と Java Stream における「join問題」と「動的列ピボット」のパフォーマンス・設計比較**を目的とした実験リポジトリです。
+このプロジェクトは、注文 `Order` に複数のユーザ定義属性 `OrderAttributeValue` が紐づく 1対多データを、CSV では「1注文=1行」の横持ち形式に変換する処理を題材にする。
+
+目的は、単なる CSV 出力 Tips ではなく、次の責務配置を比較すること。
+
+- Kotlin `Sequence` / Java `Spliterator` で ordered windowing する
+- jOOQ `MULTISET` で親子データをネスト取得する
+- 属性値を JVM Map に preload する
+- PostgreSQL 側で SQL Pivot / JSON aggregation する
+- CSV writer と allocation / GC / I/O のコストを分けて見る
+
+Kotlin Fest 2026 に向けて、業務データエクスポートの設計・性能・計測を説明できる実験リポジトリとして整備している。
 
 ### 本質的な課題
 
-Stream/Sequenceは**join機構を持たない**。この制約下で以下の問題にどう対処するかを実験的に検証します：
+RDB 上では、注文属性値は自然には縦持ちになる。
 
-1. **1→多のjoin問題**
-   - Order → OrderItem のような親子関係を、SQLなしでどう結合するか
-   - 全件取得 → Map化 → アプリ側join の是非
+```text
+order_id | attribute_definition_id | value
+-------- | ----------------------- | ----------------
+1        | gift_wrap               | yes
+1        | delivery_note           | morning delivery
+3        | campaign_id             | summer-2026
+```
 
-2. **動的列ピボット問題**（本プロジェクトのコア）
-   - ユーザ定義の「注文属性」（Order Attributes）を列として動的にCSV出力したい
-   - 例：`order_id, customer_name, ..., ギフト包装, 配送指示, キャンペーンID`
-   - 属性は0〜10個でユーザが任意に追加可能
-   - これを「行展開」ではなく「列展開」で出力する難しさ
+しかし、業務 CSV では固定ヘッダの横持ち形式で出したい。
 
-### 検証テーマ
+```text
+order_id,customer_name,gift_wrap,delivery_note,campaign_id
+1,Alice,yes,morning delivery,
+2,Bob,,,
+3,Carol,,,summer-2026
+```
 
-- Kotlin `Sequence` vs Java `Stream` (`flatMap`, `mapMulti`) vs カスタム `Spliterator`
-- **動的カスタム項目のピボット処理**をストリーミングで実現できるか
-- 遅延評価における "pull" (Sequence) vs "push" (Stream) の内部挙動
-- メモリ効率・速度・GC挙動の比較
+入力が sparse でも、固定ヘッダ CSV は dense な出力になる。存在しない属性値も空セルとして出力する必要があるため、正しい CSV を出す限り $\Omega(N \cdot A)$ の出力下界は避けられない。
 
-### なぜこの問題が難しいか
+詳細は [docs/problem-model.md](docs/problem-model.md) を参照。
 
-- **SQLでのjoin完結が困難**：列が動的なのでSQLのピボットでは対応しきれない
-- **RDBは行方向が得意**：列を動的に増やす処理はDB側で完結させにくい
-- **Stream/Sequenceにjoin不在**：標準では2つのストリームをキーでjoinできない
+## ドキュメント
 
-## 🧪 検証マトリクス
+| Document | Purpose |
+| --- | --- |
+| [docs/problem-model.md](docs/problem-model.md) | 具体例、$N$, $A$, $V$, $a_{\text{max}}$, $B$, $S$、出力下界、責務配置の問題定義 |
+| [docs/strategies.md](docs/strategies.md) | PRELOAD / MULTISET / WINDOW / SQL Pivot / ResultSet baseline の比較 |
+| [docs/benchmark/measurement-design.md](docs/benchmark/measurement-design.md) | benchmark artifact、Prometheus、round-robin / isolated の測定設計 |
+| [docs/benchmark/results.md](docs/benchmark/results.md) | 測定結果の索引。smoke run と formal run の置き場 |
+| [docs/talk-outline.md](docs/talk-outline.md) | Kotlin Fest 2026 向け発表アウトラインとプロポーザル本文案 |
+| [docs/architecture.md](docs/architecture.md) | レイヤ構成と依存ルール |
 
-### Phase 1: 行展開パターン（Order → OrderItem）
+## 検証マトリクス
 
-| Strategy | 実装方法 | 評価型 | 中間オブジェクト | 期待されるメモリ効率 |
-|----------|---------|--------|----------------|------------------|
-| **Sequence** | `flatMap` on Kotlin Sequence | Pull (遅延) | 最小 | ⭐⭐⭐ |
-| **Stream flatMap** | `flatMap` on Java Stream | Push (遅延) | 中間Stream生成 | ⭐⭐ |
-| **Stream mapMulti** | `mapMulti` (Java 16+) | Push (遅延) | Consumer直接 | ⭐⭐⭐ |
-| **Spliterator** | カスタムSpliterator | Pull (制御可能) | 手動管理 | ⭐⭐⭐ |
+### Main: 1対多データの横持ち CSV エクスポート
 
-### Phase 2: 列展開パターン（動的Order Attributes）✅ 実装済み
+| Strategy | 実装方法 | 主な責務配置 | メモリ傾向 |
+|----------|---------|------------|-----------|
+| **preload** | 全属性値を JVM Map に格納 | JVM heap に $V$ を保持 | $\Theta(V)$ |
+| **multiset** | jOOQ `MULTISET` で親子をネスト取得 | DB 側ネスト化 + jOOQ mapping | $\Theta(A + a_{\text{max}})$ + nested mapping |
+| **sequence-window** | Kotlin `Sequence` + orderId windowing | JVM 側 ordered group fold | $\Theta(A + a_{\text{max}})$ |
+| **spliterator-window** | custom `Spliterator` + orderId windowing | JVM 側 ordered group fold | $\Theta(A + a_{\text{max}})$ |
+| **sql-pivot** | PostgreSQL conditional aggregation | DB 側横展開 | planned |
+| **imperative-result-set** | JDBC ResultSet に近い手続き baseline | JVM 側 ordered group fold | planned |
 
-| Strategy | 実装方法 | 理論モデル | メモリ効率 | 実測 (30k orders × 15 attrs, Dense) |
-|----------|---------|------------|-----------|----------|
-| **preload** | 全属性値をMapに格納 | M_app = O(V) | ⭐ (全データメモリ展開) | 0.41s ⚡ |
-| **multiset** | jOOQのmultiset機能 | T_DB が異なる | ⭐⭐ (materialization) | 1.22s |
-| **sequence-window** | Sequence + Windowing | M_app = O(a_max) | ⭐⭐⭐ (ストリーミング) | 0.80s ✅ 推奨 |
-| **spliterator-window** | カスタムSpliterator + Windowing | M_app = O(a_max) | ⭐⭐⭐ (ストリーミング) | 0.74s |
+戦略ごとの詳細は [docs/strategies.md](docs/strategies.md) を参照。
 
-**測定設計**（詳細は [Issue #18](https://github.com/yamada-ai/simple-ec-backend/issues/18)）:
-- **データセット**: 3条件（Baseline: N=30k/A=15/Dense、Sparse: N=30k/A=15/ā=2、Wide: N=30k/A=120/Dense）
-- **系統1（主）**: NullOutputStream + MD5（Compute測定、I/O除外）
-- **系統2（参考）**: 実ファイル出力（I/O含む）
-- **測定回数**: warmup 5回 + measurement 10回
-- **指標**: median + IQR + max（p95は使わない）
+### Legacy: Order -> OrderItem 行展開
+
+初期の検証として、Order -> OrderItem の行展開パターンも残している。
+
+| Strategy | 実装方法 | 評価型 | 中間オブジェクト |
+|----------|---------|--------|----------------|
+| **Sequence** | `flatMap` on Kotlin Sequence | Pull | 最小 |
+| **Stream flatMap** | `flatMap` on Java Stream | Push | 中間Stream生成 |
+| **Stream mapMulti** | `mapMulti` (Java 16+) | Push | Consumer直接 |
+| **Spliterator** | カスタムSpliterator | Pull | 手動管理 |
 
 ### 検証環境条件
 
@@ -66,8 +84,8 @@ Stream/Sequenceは**join機構を持たない**。この制約下で以下の問
 |------|-----|------|
 | メモリ制限 | 512MB | `-Xmx512m` |
 | 測定データセット | 3条件 | Baseline/Sparse/Wide（詳細は下記） |
-| 測定系統 | 2系統 | Compute（主）+ 実ファイル出力（参考） |
-| jOOQ fetchSize | 1,000 | カーソルチャンク |
+| 測定系統 | round-robin artifact | `samples.jsonl` + Prometheus range data |
+| fetchSize / cursor | TODO | PostgreSQL JDBC の streaming 条件を確認予定 |
 
 **データセット詳細**:
 
@@ -79,7 +97,7 @@ Stream/Sequenceは**join機構を持たない**。この制約下で以下の問
 
 ### 検証の焦点
 
-- **理論モデルの検証**: N·A 支配、V（属性値総数）の影響、メモリ使用量（M_app = O(V) vs O(a_max)）
+- **理論モデルの検証**: $N \cdot A$ 支配、$V$（属性値総数）の影響、メモリ使用量（$M_{\text{app}} = O(V)$ vs $O(A + a_{\text{max}})$）
 - **データ密度の影響**: Dense vs Sparse でのメモリ・GC挙動の差
 - **動的列スケール**: 列数（A）増加時の列埋めコスト、I/O支配
 - **ストリーミング処理**: 遅延評価でメモリ圧迫を回避できるか
@@ -107,15 +125,15 @@ Stream/Sequenceは**join機構を持たない**。この制約下で以下の問
 ### 基本エンティティ（DDD: 単数形）
 - `customer`（顧客）
 - `order`（注文）
-- `order_item`（注文明細）→ 1対多のメイン検証対象
+- `order_item`（注文明細）→ 初期検証用の行展開データ
 
-### 動的列ピボット用（本プロジェクトのコア）
+### 1対多横持ち CSV 用（本プロジェクトのコア）
 - `order_attribute_definition`（注文属性定義）
   - ユーザが定義するカスタム項目（例：ギフト包装種別、配送指示、キャンペーンID）
 - `order_attribute_value`（注文属性値）
   - 各注文に対する属性値のスパース行列
   - `(order_id, attribute_definition_id, value)` 構造
-  - **これをCSV出力時に列方向にピボットする**のが本題
+  - **これを CSV 出力時に固定ヘッダの横持ち形式へ変換する**のが本題
 
 ## 🚀 セットアップ
 
@@ -166,7 +184,7 @@ Admin API でテストデータを投入・削除できます（実験用機能�
 # 基本: 100 顧客、1000 注文を生成
 curl -X POST "http://localhost:8080/admin/seed?customers=100&orders=1000"
 
-# 属性付き: 100 顧客、1000 注文、15 属性定義を生成（Phase 2 用）
+# 属性付き: 100 顧客、1000 注文、15 属性定義を生成
 curl -X POST "http://localhost:8080/admin/seed?customers=100&orders=1000&attrs=15"
 
 # 再現可能なデータ: seed パラメータで固定
@@ -222,49 +240,51 @@ curl "http://localhost:8080/api/export/orders?strategy=stream-mapmulti" > orders
 curl "http://localhost:8080/api/export/orders?strategy=spliterator" > orders_spliterator.csv
 ```
 
-### Phase 2: CSV エクスポート（動的属性列展開）✅ 実装済み
+### Main: CSV エクスポート（注文属性の横持ち展開）
 
 ```bash
-# Map 事前ロード版（最速だがメモリ消費大）
+# Map 事前ロード版
 curl "http://localhost:8080/api/export/orders/attributes?strategy=preload" > orders_preload.csv
 
 # jOOQ multiset 版
 curl "http://localhost:8080/api/export/orders/attributes?strategy=multiset" > orders_multiset.csv
 
-# Sequence + Windowing 版（推奨：メモリ効率とパフォーマンスのバランス）
+# Sequence + Windowing 版
 curl "http://localhost:8080/api/export/orders/attributes?strategy=sequence-window" > orders_sequence.csv
 
 # Spliterator + Windowing 版
 curl "http://localhost:8080/api/export/orders/attributes?strategy=spliterator-window" > orders_spliterator.csv
 ```
 
-### ベンチマーク実行（自動化スクリプト）
+### ベンチマーク実行（reproducible artifact runner）
 
-4戦略を一括実行してパフォーマンス比較（2系統測定）：
+事前に backend と Prometheus を起動し、データ投入を済ませる。
 
 ```bash
-# Baseline条件: 30,000 注文 × 15 属性（Dense）
-# warmup 5回 + measurement 10回
-ORDERS=30000 ATTRS=15 WARMUP=5 RUNS=10 ./scripts/bench/run_benchmark.sh
-
-# Sparse条件: 30,000 注文 × 15 属性（ā=2）
-ORDERS=30000 ATTRS=15 SPARSE_MODE=true WARMUP=5 RUNS=10 ./scripts/bench/run_benchmark.sh
-
-# Wide条件: 30,000 注文 × 120 属性（Dense）
-ORDERS=30000 ATTRS=120 WARMUP=5 RUNS=10 ./scripts/bench/run_benchmark.sh
-
-# 特定戦略のみ実行
-STRATEGIES="preload sequence-window" ./scripts/bench/run_benchmark.sh
-
-# データ投入をスキップ（2回目以降は自動判定）
-SKIP_SEED=1 ./scripts/bench/run_benchmark.sh
+python3 scripts/bench/run_benchmark.py \
+  --condition baseline \
+  --mode round-robin \
+  --orders 30000 \
+  --attrs 15 \
+  --warmup 5 \
+  --runs 10
 ```
 
-**測定系統**:
-- **系統1（主）**: `/api/export/orders/attributes/benchmark` でCompute測定（NullOutputStream + MD5）
-- **系統2（参考）**: `/api/export/orders/attributes` で実ファイル出力（I/O含む）
+この runner は以下を `docs/benchmark/runs/<run-id>/` に保存する。
 
-結果は `docs/benchmark/runs/` に保存されます。詳細は [`scripts/bench/README.md`](scripts/bench/README.md) および [Issue #18](https://github.com/yamada-ai/simple-ec-backend/issues/18) を参照。
+```text
+run.json
+environment.json
+samples.jsonl
+samples.csv
+summary.json
+summary.md
+prometheus/range/*.json
+```
+
+処理時間の正は `/api/export/orders/attributes/benchmark` の JSON (`elapsedMs`, `md5`) とする。Prometheus は heap / GC / allocation / CPU の補助時系列として保存する。
+
+旧 `scripts/bench/run_benchmark.sh` は互換用に残している。発表・記事用の再分析可能な記録は Python runner を使う。
 
 ## プロジェクト構成
 
@@ -272,12 +292,11 @@ SKIP_SEED=1 ./scripts/bench/run_benchmark.sh
 src/
 ├── main/
 │   ├── kotlin/
-│   │   └── com/example/simple_ec_backend/
-│   │       ├── presentation/      # API層（OpenAPI生成）
-│   │       ├── application/       # ユースケース層
-│   │       ├── domain/            # ドメインモデル
-│   │       ├── infrastructure/    # jOOQ, Repository実装
-│   │       └── export/            # CSV エクスポート実装（実験対象）
+│   │   └── com/example/ec/
+│   │       ├── presentation/      # HTTP controller, mapper, streaming response
+│   │       ├── application/       # use case, application service, export strategy
+│   │       ├── domain/            # entity, value object, repository contract, read model
+│   │       └── infrastructure/    # jOOQ, repository implementation
 │   └── resources/
 │       ├── db/migration/          # Flyway マイグレーション
 │       ├── openapi/               # OpenAPI 定義
@@ -329,28 +348,32 @@ docker ps | grep simple-ec-postgres
 
 ## 📝 実装状況
 
-### 完了 ✅
+### 完了
 
 - [x] Admin API 実装（seed, truncate, summary）
-- [x] Phase 1: CSV エクスポート（Order → OrderItem 行展開）
+- [x] Legacy: CSV エクスポート（Order → OrderItem 行展開）
   - [x] Kotlin Sequence 版
   - [x] Java Stream (flatMap) 版
   - [x] Java Stream (mapMulti) 版
   - [x] カスタム Spliterator 版
-- [x] Phase 2: CSV エクスポート（動的属性列展開）
+- [x] Main: 1対多データの横持ち CSV エクスポート
   - [x] Map 事前ロード版（preload）
   - [x] jOOQ multiset 版
   - [x] Sequence + Windowing 版（sequence-window）
   - [x] Spliterator + Windowing 版（spliterator-window）
 - [x] Order Attributes CRUD API（属性定義・属性値）
-- [x] ベンチマーク自動化スクリプト（`scripts/bench/`）
-- [x] パフォーマンス計測・比較（実測結果付き）
+- [x] Benchmark artifact runner（`scripts/bench/run_benchmark.py`）
+- [x] P0 docs（problem model, strategies, measurement design, talk outline）
 
 ### 今後の拡張案
 
-- [ ] Observability 強化（Prometheus/Grafana ダッシュボード）
-- [ ] 他のエクスポート形式（JSON, Excel）
-- [ ] フロントエンド（オプション）
+- [ ] Baseline / Sparse / Wide の formal benchmark
+- [ ] Chart generation
+- [ ] SQL Pivot strategy
+- [ ] Imperative ResultSet baseline
+- [ ] JFR / EXPLAIN artifacts
+- [ ] Direct Writer comparison
+- [ ] JSON aggregation strategy
 
 ## 📖 参考資料
 

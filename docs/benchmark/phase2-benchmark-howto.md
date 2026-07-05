@@ -1,5 +1,11 @@
 # Phase 2 ベンチマーク実行手順
 
+> Current note:
+> 現在の主題は「1対多データの横持ち CSV エクスポート」であり、
+> 発表・記事用の正の測定記録は `scripts/bench/run_benchmark.py` が生成する
+> `docs/benchmark/runs/<run-id>/` の artifact とする。
+> このファイルは旧 runner の手順を含む historical guide として残している。
+
 Phase 2 戦略（map-preload / multiset / sequence-window / spliterator-window）の性能検証を再現できるようにするための手順とスクリプトです。Grafana/Prometheus を併用する場合は、アプリ側の Actuator/Prometheus 有効化が前提です。
 
 ## 前提
