@@ -6,7 +6,8 @@ enum class AttributeExportStrategy {
     SPLITERATOR_WINDOW,
     PRELOAD,
     SQL_PIVOT,
-    IMPERATIVE_RESULT_SET;
+    IMPERATIVE_RESULT_SET,
+    JSON_AGGREGATION;
 
     companion object {
         fun from(value: String): AttributeExportStrategy {

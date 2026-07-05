@@ -1,6 +1,7 @@
 package com.example.ec.application.export
 
 import com.example.ec.domain.order.OrderAttributeJoinedRow
+import com.example.ec.domain.order.OrderAttributeJsonRow
 import com.example.ec.domain.order.OrderBaseRow
 import com.example.ec.domain.order.OrderAttributePivotRow
 import com.example.ec.domain.order.OrderWithAttributes
@@ -64,6 +65,17 @@ fun OrderWithAttributes.toCsvRow(): OrderAttributeCsvRow {
 }
 
 fun OrderAttributePivotRow.toCsvRow(): OrderAttributeCsvRow {
+    return OrderAttributeCsvRow(
+        orderId = orderId,
+        customerId = customerId,
+        customerName = customerName,
+        customerEmail = customerEmail,
+        orderDate = orderDate,
+        attributes = attributes
+    )
+}
+
+fun OrderAttributeJsonRow.toCsvRow(): OrderAttributeCsvRow {
     return OrderAttributeCsvRow(
         orderId = orderId,
         customerId = customerId,

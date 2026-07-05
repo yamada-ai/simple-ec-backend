@@ -1,9 +1,12 @@
 package com.example.ec.infrastructure.repository.order
 
+import com.fasterxml.jackson.core.type.TypeReference
+import com.fasterxml.jackson.databind.ObjectMapper
 import com.example.ec.domain.attribute.OrderAttributeValue
 import com.example.ec.domain.customer.Customer
 import com.example.ec.domain.order.Order
 import com.example.ec.domain.order.OrderAttributeJoinedRow
+import com.example.ec.domain.order.OrderAttributeJsonRow
 import com.example.ec.domain.order.OrderAttributePivotRow
 import com.example.ec.domain.order.OrderBaseRow
 import com.example.ec.domain.order.OrderExportRow
@@ -21,6 +24,7 @@ import com.example.ec.infrastructure.jooq.tables.references.CUSTOMER
 import com.example.ec.infrastructure.jooq.tables.references.ORDER
 import com.example.ec.infrastructure.jooq.tables.references.ORDER_ATTRIBUTE_VALUE
 import com.example.ec.infrastructure.jooq.tables.references.ORDER_ITEM
+import org.jooq.JSONB
 import org.jooq.Record
 import org.jooq.Condition
 import org.jooq.DSLContext
@@ -33,7 +37,8 @@ import java.util.stream.Stream
 @Repository
 @Suppress("TooManyFunctions") // Repository層は多くのメソッドを持つことが一般的
 class OrderRepositoryImpl(
-    private val dsl: DSLContext
+    private val dsl: DSLContext,
+    private val objectMapper: ObjectMapper
 ) : OrderRepository {
 
     override fun findById(id: ID<Order>): Order? {
@@ -510,6 +515,71 @@ class OrderRepositoryImpl(
         )
     }
 
+    override fun streamOrdersWithAttributesJsonAggregation(
+        from: LocalDateTime?,
+        to: LocalDateTime?
+    ): Stream<OrderAttributeJsonRow> {
+        val whereCondition = buildSearchCondition(from, to, null)
+        val attributesField = DSL.field(
+            """
+                coalesce(
+                    jsonb_object_agg({0}, {1})
+                        filter (where {0} is not null and {1} is not null),
+                    '{}'::jsonb
+                )
+            """.trimIndent(),
+            JSONB::class.java,
+            ORDER_ATTRIBUTE_VALUE.ATTRIBUTE_DEFINITION_ID,
+            ORDER_ATTRIBUTE_VALUE.VALUE
+        ).`as`("attributes")
+
+        return dsl.select(
+            ORDER.ID,
+            ORDER.CUSTOMER_ID,
+            CUSTOMER.NAME,
+            CUSTOMER.EMAIL,
+            ORDER.ORDER_DATE,
+            attributesField
+        )
+            .from(ORDER)
+            .join(CUSTOMER).on(CUSTOMER.ID.eq(ORDER.CUSTOMER_ID))
+            .leftJoin(ORDER_ATTRIBUTE_VALUE).on(ORDER_ATTRIBUTE_VALUE.ORDER_ID.eq(ORDER.ID))
+            .where(whereCondition)
+            .groupBy(
+                ORDER.ID,
+                ORDER.CUSTOMER_ID,
+                CUSTOMER.NAME,
+                CUSTOMER.EMAIL,
+                ORDER.ORDER_DATE
+            )
+            .orderBy(ORDER.ID.asc())
+            .fetchSize(EXPORT_FETCH_SIZE)
+            .fetchStream()
+            .map { record -> mapToOrderAttributeJsonRow(record, attributesField) }
+    }
+
+    private fun mapToOrderAttributeJsonRow(
+        record: Record,
+        attributesField: Field<JSONB>
+    ): OrderAttributeJsonRow {
+        return OrderAttributeJsonRow(
+            orderId = record.get(ORDER.ID)!!,
+            customerId = record.get(ORDER.CUSTOMER_ID)!!,
+            customerName = record.get(CUSTOMER.NAME)!!,
+            customerEmail = record.get(CUSTOMER.EMAIL)!!,
+            orderDate = record.get(ORDER.ORDER_DATE)!!,
+            attributes = parseAttributeJson(record.get(attributesField))
+        )
+    }
+
+    private fun parseAttributeJson(json: JSONB?): Map<Long, String> {
+        val rawAttributes = objectMapper.readValue(
+            json?.data() ?: "{}",
+            STRING_ATTRIBUTE_MAP_TYPE
+        )
+        return rawAttributes.mapKeys { (definitionId, _) -> definitionId.toLong() }
+    }
+
     override fun streamOrdersBase(
         from: LocalDateTime?,
         to: LocalDateTime?
@@ -567,6 +637,7 @@ class OrderRepositoryImpl(
 
     companion object {
         private const val EXPORT_FETCH_SIZE = 1_000
+        private val STRING_ATTRIBUTE_MAP_TYPE = object : TypeReference<Map<String, String>>() {}
     }
 }
 

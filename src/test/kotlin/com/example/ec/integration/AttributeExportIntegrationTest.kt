@@ -40,7 +40,8 @@ class AttributeExportIntegrationTest(
         "multiset",
         "preload",
         "sql-pivot",
-        "imperative-result-set"
+        "imperative-result-set",
+        "json-aggregation"
     ).forEach { strategy ->
         test("GET /api/export/orders/attributes ($strategy) returns expected CSV") {
             val response = restTemplate.getForEntity<String>("/api/export/orders/attributes?strategy=$strategy")

@@ -64,6 +64,7 @@ order_id,customer_name,gift_wrap,delivery_note,campaign_id
 | **spliterator-window** | custom `Spliterator` + orderId windowing | JVM 側 ordered group fold | $\Theta(A + a_{\text{max}})$ |
 | **sql-pivot** | PostgreSQL conditional aggregation | DB 側横展開 | `OrderAttributeCsvRow` に復元 |
 | **imperative-result-set** | JDBC ResultSet に近い手続き baseline | JVM 側 ordered group fold | $\Theta(A + a_{\text{max}})$ |
+| **json-aggregation** | PostgreSQL `jsonb_object_agg` | DB 側JSONB集約 + JVM parse | JSONB payload に依存 |
 
 戦略ごとの詳細は [docs/strategies.md](docs/strategies.md) を参照。
 
@@ -260,6 +261,9 @@ curl "http://localhost:8080/api/export/orders/attributes?strategy=sql-pivot" > o
 
 # Imperative ResultSet baseline 版
 curl "http://localhost:8080/api/export/orders/attributes?strategy=imperative-result-set" > orders_resultset.csv
+
+# PostgreSQL JSON aggregation 版
+curl "http://localhost:8080/api/export/orders/attributes?strategy=json-aggregation" > orders_json_aggregation.csv
 ```
 
 ### ベンチマーク実行（reproducible artifact runner）
@@ -369,6 +373,7 @@ docker ps | grep simple-ec-postgres
   - [x] Spliterator + Windowing 版（spliterator-window）
   - [x] SQL Pivot / Conditional Aggregation 版（sql-pivot）
   - [x] Imperative ResultSet baseline 版（imperative-result-set）
+  - [x] PostgreSQL JSON aggregation 版（json-aggregation）
 - [x] Order Attributes CRUD API（属性定義・属性値）
 - [x] Benchmark artifact runner（`scripts/bench/run_benchmark.py`）
 - [x] P0 docs（problem model, strategies, measurement design, talk outline）

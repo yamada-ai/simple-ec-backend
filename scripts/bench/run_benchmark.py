@@ -27,7 +27,10 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 
-DEFAULT_STRATEGIES = "preload,multiset,sequence-window,spliterator-window,sql-pivot,imperative-result-set"
+DEFAULT_STRATEGIES = (
+    "preload,multiset,sequence-window,spliterator-window,"
+    "sql-pivot,imperative-result-set,json-aggregation"
+)
 FIXED_COLUMN_COUNT = 5
 PROMETHEUS_JOB = "simple-ec-backend"
 

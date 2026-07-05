@@ -131,4 +131,12 @@ interface OrderRepository {
         to: LocalDateTime?,
         definitionIds: List<Long>
     ): Stream<OrderAttributePivotRow>
+
+    /**
+     * JSON aggregation 用: PostgreSQL jsonb_object_agg で注文ごとに属性Mapを集約して取得
+     */
+    fun streamOrdersWithAttributesJsonAggregation(
+        from: LocalDateTime?,
+        to: LocalDateTime?
+    ): Stream<OrderAttributeJsonRow>
 }

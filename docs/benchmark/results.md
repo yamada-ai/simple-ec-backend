@@ -193,6 +193,49 @@ docs/benchmark/runs/imperative_resultset_smoke_5000x15_20260705_1951/
 - `imperative-result-set` は jOOQ `Record` 生成と Kotlin `Sequence` / Java `Spliterator` の抽象を避ける。そのため、正式測定では「ordered group fold 自体のコスト」と「抽象・mappingのコスト」を分離する比較点として使う。
 - コードの保守性は他戦略より低い。SQL文字列、parameter binding、ResultSet close を手で持つため、実務実装として推すのではなく baseline として扱う。
 
+## JSON aggregation 追加後の smoke 解釈メモ
+
+この run は正式な性能測定結果ではない。
+
+PostgreSQL の `jsonb_object_agg(attribute_definition_id, value)` で注文ごとの属性MapをDB側で作り、JVM側でJSONBをparseする `json-aggregation` 戦略を追加した直後の疎通確認である。
+
+実行ディレクトリ:
+
+```text
+docs/benchmark/runs/json_aggregation_smoke_5000x15_20260705_2002/
+```
+
+条件:
+
+| Variable | Value |
+| --- | ---: |
+| $N$ | 5,000 |
+| $A$ | 15 |
+| $V$ | 75,000 |
+| $B$ | 5 |
+| $S = N (A + B)$ | 100,000 cells |
+| warmup | 1 |
+| measurement | 3 |
+
+処理時間:
+
+| Strategy | Samples | Median ms | IQR ms | Min ms | Max ms | MD5 matched |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| preload | 3 | 93 | 5 | 89 | 94 | yes |
+| sql-pivot | 3 | 103 | 5 | 100 | 105 | yes |
+| json-aggregation | 3 | 118 | 16 | 107 | 123 | yes |
+| imperative-result-set | 3 | 127 | 15 | 124 | 139 | yes |
+| sequence-window | 3 | 136 | 22 | 127 | 149 | yes |
+| spliterator-window | 3 | 139 | 7 | 133 | 140 | yes |
+| multiset | 3 | 283 | 11 | 278 | 289 | yes |
+
+解釈:
+
+- 全戦略で MD5 が一致したため、`json-aggregation` は既存戦略と同じCSVを生成できている。
+- この小規模runでは `json-aggregation` は `MULTISET` よりかなり速く、`SQL Pivot` に近い位置に出ている。
+- これは「DB側でJSONB payloadを作ること」自体と「jOOQ `MULTISET` 抽象・nested mapping」の切り分けに使える可能性がある。
+- ただし measurement=3 の smoke なので、正式な結論には使わない。Wide条件では JSONB生成、JVM側JSON parse、CSV writer allocation のどこが支配的かを `EXPLAIN` / JFR / allocation profile で確認する。
+
 ## Formal Result Slots（正式測定の記入枠）
 
 正式な run は、生成され次第ここに追加していく。

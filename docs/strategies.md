@@ -18,6 +18,7 @@ OrderAttributeExportService
      -> SpliteratorWindowOrderAttributeRowSource
      -> SqlPivotOrderAttributeRowSource
      -> ImperativeResultSetOrderAttributeRowSource
+     -> JsonAggregationOrderAttributeRowSource
   -> OrderAttributeCsvWriter
 ```
 
@@ -256,32 +257,43 @@ order by order.id
 
 ## JSON Aggregation
 
-状態: 未実装（計画中）。
+状態: 実装済み。
 
-### やること（予定）
+### やっていること
 
-PostgreSQL の JSONB aggregation を明示的に使う。
+PostgreSQL の JSONB aggregation を明示的に使い、注文ごとに属性値のJSON objectを作る。
 
 ```sql
-jsonb_object_agg(attribute_definition_id, value)
+coalesce(
+  jsonb_object_agg(attribute_definition_id, value)
+    filter (where attribute_definition_id is not null and value is not null),
+  '{}'::jsonb
+)
 ```
+
+JVM側ではJSONBを `Map<Long, String>` にparseし、既存の `OrderAttributeCsvRow` に戻して共通CSV writerへ渡す。
+
+`value is not null` をfilterしているのは、window系と同じく null value を「属性なし」と同等に扱うためである。
 
 ### 長所
 
 - JSONB という責務を明示的にできる。
 - jOOQ `MULTISET` との比較対象として良い。
 - DB からの結果の形は注文ごとに1行になる。
+- `MULTISET` の抽象を使わず、PostgreSQL側のJSONB集約コストを直接観察しやすい。
 
 ### 短所
 
 - JSONB の生成・parse コストがかかる。
 - 型変換が直接的ではなくなる。
 - CSV の列順や欠損セルの扱いは別途必要。
+- JSONB objectのkeyは文字列になるため、JVM側で定義IDを `Long` に戻す処理が必要である。
 
 ### 向いている場面
 
 - PostgreSQL 側のネストしたペイロード戦略を説明したい場合。
 - jOOQ の抽象化を明示的な SQL と比較したい場合。
+- `MULTISET` の遅さが jOOQ 抽象由来なのか、DB側JSONB payload構築由来なのかを切り分けたい場合。
 
 ## Imperative ResultSet Baseline
 
