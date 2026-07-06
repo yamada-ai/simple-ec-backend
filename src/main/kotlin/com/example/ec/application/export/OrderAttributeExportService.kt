@@ -40,8 +40,43 @@ class OrderAttributeExportService(
         }
     }
 
+    @Transactional(readOnly = true)
+    fun drainRows(
+        from: LocalDateTime?,
+        to: LocalDateTime?,
+        strategy: String
+    ): OrderAttributeDrainResult {
+        // Keep schema loading in the measured path because CSV export always needs dynamic headers.
+        OrderAttributeExportSchema.from(definitionRepository.findAll())
+        val exportStrategy = AttributeExportStrategy.from(strategy)
+        val rowSource = rowSourceFor(exportStrategy)
+
+        var rowCount = 0L
+        var attributeValueCount = 0L
+        var orderIdChecksum = 0L
+        rowSource.rows(from, to).use { rows ->
+            rows.forEach { row ->
+                rowCount++
+                attributeValueCount += row.attributes.size
+                orderIdChecksum = orderIdChecksum xor row.orderId
+            }
+        }
+
+        return OrderAttributeDrainResult(
+            rowCount = rowCount,
+            attributeValueCount = attributeValueCount,
+            orderIdChecksum = orderIdChecksum
+        )
+    }
+
     private fun rowSourceFor(strategy: AttributeExportStrategy): OrderAttributeRowSource {
         return rowSourcesByStrategy[strategy]
             ?: error("Order attribute export row source is not registered: strategy=$strategy")
     }
 }
+
+data class OrderAttributeDrainResult(
+    val rowCount: Long,
+    val attributeValueCount: Long,
+    val orderIdChecksum: Long
+)

@@ -6,7 +6,11 @@ import com.example.ec.presentation.model.BenchmarkResult
 fun OrderAttributeExportBenchmarkResult.toResponse(): BenchmarkResult {
     return BenchmarkResult(
         strategy = strategy,
+        mode = mode,
         elapsedMs = elapsedMs,
-        md5 = md5
+        md5 = md5,
+        rowCount = rowCount,
+        attributeValueCount = attributeValueCount,
+        orderIdChecksum = orderIdChecksum
     )
 }

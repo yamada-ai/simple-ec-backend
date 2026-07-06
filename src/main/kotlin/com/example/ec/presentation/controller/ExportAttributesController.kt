@@ -45,10 +45,11 @@ class ExportAttributesController(
     fun benchmarkOrderAttributes(
         @RequestParam(required = false) startDate: OffsetDateTime?,
         @RequestParam(required = false) endDate: OffsetDateTime?,
-        @RequestParam(required = false, defaultValue = "sequence-window") strategy: String
+        @RequestParam(required = false, defaultValue = "sequence-window") strategy: String,
+        @RequestParam(required = false, defaultValue = "csv") mode: String
     ): ResponseEntity<BenchmarkResult> {
         val from = startDate.toSystemLocalDateTime()
         val to = endDate.toSystemLocalDateTime()
-        return ResponseEntity.ok(benchmarkService.measure(from, to, strategy).toResponse())
+        return ResponseEntity.ok(benchmarkService.measure(from, to, strategy, mode).toResponse())
     }
 }

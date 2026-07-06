@@ -26,11 +26,22 @@ docs/benchmark/runs/<run-id>/
   prometheus/
     queries.json
     range/*.json
+  explain/
+    *.sql
+    *.explain.json
+    *.explain.txt
+  jfr/
+    *.jfr
+    *-summary.txt
 ```
 
 処理時間の正は benchmark API が返す `elapsedMs` と `md5`。
 
 Prometheus は heap / GC / allocation / CPU の補助時系列として使う。
+
+`--benchmark-mode rows` を指定すると、CSV writer と MD5 計算を通さず、各戦略の row source を最後まで drain する。`csv` と `rows` の差分は、CSV レンダリングと `OrderAttributeCsvRow.toRecord()` 側のコストを切り分けるために使う。
+
+`--jfr` を指定すると measurement sample ごとに JFR を保存する。backend image は `jcmd` / `jfr` を使うため JDK ベースである必要がある。
 
 ### `seed_benchmark_dataset.sh`
 
@@ -78,6 +89,25 @@ docs/benchmark/runs/<run-id>/charts/
 
 SVG は登壇資料や記事での再利用、PNG はプレビュー用途を想定する。
 
+### `collect_explain.py`
+
+run artifact に PostgreSQL の `EXPLAIN (ANALYZE, BUFFERS)` を追加保存する。
+
+```bash
+python3 scripts/bench/collect_explain.py \
+  --run-dir docs/benchmark/runs/<run-id>
+```
+
+保存対象:
+
+- `vertical-join`: `sequence-window` / `spliterator-window` / `imperative-result-set` の共通入力形状
+- `sql-pivot`: 動的な `MAX(CASE WHEN ...)` による条件付き集約
+- `json-aggregation`: `jsonb_object_agg(...)` による属性Map化
+- `preload-base`: PRELOADの注文ベース取得
+- `preload-attributes`: PRELOADの属性値一括取得
+
+jOOQ `MULTISET` はjOOQが生成するSQL/JSONエミュレーションに依存するため、このスクリプトではまだ完全再現しない。
+
 ### `run_benchmark.sh`
 
 旧 runner。
@@ -122,6 +152,30 @@ python3 scripts/bench/run_benchmark.py \
   --runs 10
 ```
 
+Row source drain のみを測る:
+
+```bash
+python3 scripts/bench/run_benchmark.py \
+  --condition baseline-rows \
+  --benchmark-mode rows \
+  --orders 30000 \
+  --attrs 15 \
+  --warmup 5 \
+  --runs 10
+```
+
+JFR を measurement sample ごとに保存する:
+
+```bash
+python3 scripts/bench/run_benchmark.py \
+  --condition baseline-jfr \
+  --orders 30000 \
+  --attrs 15 \
+  --warmup 5 \
+  --runs 3 \
+  --jfr
+```
+
 特定戦略だけ測る:
 
 ```bash
@@ -158,6 +212,7 @@ python3 scripts/bench/run_benchmark.py \
 | `--prometheus-url` | `http://localhost:9090` | Prometheus URL |
 | `--condition` | `default` | Run condition name |
 | `--mode` | `round-robin` | Currently only `round-robin` is implemented |
+| `--benchmark-mode` | `csv` | `csv` measures full CSV export; `rows` drains row sources without CSV rendering |
 | `--orders` | `30000` | Expected order count |
 | `--attrs` | `15` | Expected attribute definition count |
 | `--warmup` | `5` | Warmup rounds |
@@ -167,6 +222,9 @@ python3 scripts/bench/run_benchmark.py \
 | `--sample-wait` | `0` | Wait between samples |
 | `--skip-data-check` | false | Skip `/admin/summary` validation |
 | `--run-id` | generated | Explicit run id |
+| `--jfr` | false | Save JFR recordings for measurement samples |
+| `--jfr-service` | `backend` | Docker Compose service used for `jcmd` / `jfr` |
+| `--jfr-container` | `simple-ec-backend` | Container name used for `docker cp` |
 
 ## Reading Results
 

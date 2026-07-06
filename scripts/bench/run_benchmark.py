@@ -41,6 +41,7 @@ class Sample:
     phase: str
     round: int
     strategy: str
+    mode: str
     startEpochSec: float
     endEpochSec: float
     elapsedMs: Optional[int]
@@ -50,6 +51,9 @@ class Sample:
     fixedColumns: int
     cells: int
     bytes: Optional[int]
+    rowCount: Optional[int]
+    attributeValueCount: Optional[int]
+    orderIdChecksum: Optional[int]
     status: str
     error: Optional[str] = None
 
@@ -60,6 +64,16 @@ class PrometheusQuery:
     expr: str
     kind: str
     required: bool = False
+
+
+@dataclass
+class JfrRecording:
+    name: str
+    containerPath: str
+    hostPath: str
+    summaryPath: str
+    started: bool
+    error: Optional[str] = None
 
 
 PROMETHEUS_RANGE_QUERIES = [
@@ -147,6 +161,7 @@ def main() -> int:
     print(f"Run ID: {run_id}")
     print(f"Condition: {args.condition}")
     print(f"Mode: {args.mode}")
+    print(f"Benchmark mode: {args.benchmark_mode}")
     print(f"Orders: {args.orders}, Attrs: {args.attrs}, Sparse: {args.sparse}")
     print(f"Strategies: {', '.join(strategies)}")
     print(f"Output: {run_dir}")
@@ -194,6 +209,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--prometheus-url", default=os.environ.get("PROMETHEUS_URL", "http://localhost:9090"))
     parser.add_argument("--condition", default=os.environ.get("CONDITION", "default"))
     parser.add_argument("--mode", default=os.environ.get("MODE", "round-robin"))
+    parser.add_argument(
+        "--benchmark-mode",
+        choices=["csv", "rows"],
+        default=os.environ.get("BENCHMARK_MODE", "csv"),
+        help="csv measures full CSV writing; rows drains row sources without CSV rendering.",
+    )
     parser.add_argument("--orders", type=int, default=int(os.environ.get("ORDERS", "5000")))
     parser.add_argument("--attrs", type=int, default=int(os.environ.get("ATTRS", "15")))
     parser.add_argument("--sparse", action="store_true", default=os.environ.get("SPARSE_MODE", "false") == "true")
@@ -207,6 +228,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--prometheus-step", default=os.environ.get("PROMETHEUS_STEP", "5s"))
     parser.add_argument("--prometheus-padding", type=int, default=int(os.environ.get("PROMETHEUS_PADDING", "30")))
     parser.add_argument("--skip-data-check", action="store_true")
+    parser.add_argument("--jfr", action="store_true", default=os.environ.get("JFR", "false") == "true")
+    parser.add_argument("--jfr-service", default=os.environ.get("JFR_SERVICE", "backend"))
+    parser.add_argument("--jfr-container", default=os.environ.get("JFR_CONTAINER", "simple-ec-backend"))
+    parser.add_argument("--jfr-settings", default=os.environ.get("JFR_SETTINGS", "profile"))
     return parser.parse_args()
 
 
@@ -227,6 +252,7 @@ def create_run_directories(run_dir: Path) -> None:
         run_dir,
         run_dir / "prometheus",
         run_dir / "prometheus" / "range",
+        run_dir / "jfr",
         run_dir / "artifacts",
     ]:
         child.mkdir(parents=True, exist_ok=True)
@@ -264,7 +290,7 @@ def run_phase(
         for idx in range(len(strategies)):
             strategy_idx = (idx + round_number - 1) % len(strategies)
             strategy = strategies[strategy_idx]
-            sample = call_benchmark_api(args, strategy, phase, round_number)
+            sample = call_benchmark_api(args, run_dir, strategy, phase, round_number)
             samples.append(sample)
             append_jsonl(run_dir / "samples.jsonl", asdict(sample))
             print_sample(sample)
@@ -273,29 +299,47 @@ def run_phase(
     return samples
 
 
-def call_benchmark_api(args: argparse.Namespace, strategy: str, phase: str, round_number: int) -> Sample:
+def call_benchmark_api(
+    args: argparse.Namespace,
+    run_dir: Path,
+    strategy: str,
+    phase: str,
+    round_number: int,
+) -> Sample:
     sample_id = f"{phase}-{round_number:02d}-{strategy}"
-    url = f"{args.base_url}/api/export/orders/attributes/benchmark?{urlencode({'strategy': strategy})}"
+    query = urlencode({"strategy": strategy, "mode": args.benchmark_mode})
+    url = f"{args.base_url}/api/export/orders/attributes/benchmark?{query}"
     start = time.time()
+    jfr = start_jfr(args, run_dir, sample_id) if args.jfr and phase == "measurement" else None
     try:
         response = http_json(url)
         end = time.time()
         elapsed_ms = int(response["elapsedMs"])
-        md5 = str(response["md5"])
+        md5 = optional_str(response.get("md5"))
+        row_count = optional_int(response.get("rowCount"))
+        attribute_value_count = optional_int(response.get("attributeValueCount"))
+        order_id_checksum = optional_int(response.get("orderIdChecksum"))
         status = "ok"
         error = None
     except (HTTPError, URLError, TimeoutError, KeyError, ValueError) as exc:
         end = time.time()
         elapsed_ms = None
         md5 = None
+        row_count = None
+        attribute_value_count = None
+        order_id_checksum = None
         status = "error"
         error = str(exc)
+    finally:
+        if jfr is not None:
+            finish_jfr(args, jfr)
 
     return Sample(
         sampleId=sample_id,
         phase=phase,
         round=round_number,
         strategy=strategy,
+        mode=args.benchmark_mode,
         startEpochSec=start,
         endEpochSec=end,
         elapsedMs=elapsed_ms,
@@ -305,6 +349,9 @@ def call_benchmark_api(args: argparse.Namespace, strategy: str, phase: str, roun
         fixedColumns=FIXED_COLUMN_COUNT,
         cells=args.orders * (FIXED_COLUMN_COUNT + args.attrs),
         bytes=None,
+        rowCount=row_count,
+        attributeValueCount=attribute_value_count,
+        orderIdChecksum=order_id_checksum,
         status=status,
         error=error,
     )
@@ -313,10 +360,154 @@ def call_benchmark_api(args: argparse.Namespace, strategy: str, phase: str, roun
 def print_sample(sample: Sample) -> None:
     if sample.status == "ok":
         duration = f"{sample.elapsedMs}ms"
-        md5 = (sample.md5 or "")[:8]
-        print(f"  {sample.strategy} {sample.phase}{sample.round}: {duration} (MD5: {md5}...)")
+        if sample.md5:
+            evidence = f"MD5: {sample.md5[:8]}..."
+        else:
+            evidence = (
+                f"rows: {value_or_dash(sample.rowCount)}, "
+                f"attrs: {value_or_dash(sample.attributeValueCount)}"
+            )
+        print(f"  {sample.strategy} {sample.phase}{sample.round}: {duration} ({evidence})")
     else:
         print(f"  {sample.strategy} {sample.phase}{sample.round}: ERROR {sample.error}")
+
+
+def start_jfr(args: argparse.Namespace, run_dir: Path, sample_id: str) -> JfrRecording:
+    name = sanitize_filename(f"bench-{sample_id}")
+    container_path = f"/tmp/{name}.jfr"
+    host_path = str(run_dir / "jfr" / f"{name}.jfr")
+    summary_path = str(run_dir / "jfr" / f"{name}-summary.txt")
+    recording = JfrRecording(
+        name=name,
+        containerPath=container_path,
+        hostPath=host_path,
+        summaryPath=summary_path,
+        started=False,
+    )
+    command = [
+        "docker",
+        "compose",
+        "exec",
+        "-T",
+        "-e",
+        "JAVA_TOOL_OPTIONS=",
+        args.jfr_service,
+        "jcmd",
+        "1",
+        "JFR.start",
+        f"name={name}",
+        f"settings={args.jfr_settings}",
+        "disk=true",
+    ]
+    completed = subprocess.run(command, check=False, capture_output=True, text=True)
+    if completed.returncode == 0:
+        recording.started = True
+    else:
+        recording.error = command_result_text(completed)
+        print(f"  JFR start failed for {sample_id}: {recording.error}")
+    return recording
+
+
+def finish_jfr(args: argparse.Namespace, recording: JfrRecording) -> None:
+    if not recording.started:
+        return
+
+    dump = subprocess.run(
+        [
+            "docker",
+            "compose",
+            "exec",
+            "-T",
+            "-e",
+            "JAVA_TOOL_OPTIONS=",
+            args.jfr_service,
+            "jcmd",
+            "1",
+            "JFR.dump",
+            f"name={recording.name}",
+            f"filename={recording.containerPath}",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    stop = subprocess.run(
+        [
+            "docker",
+            "compose",
+            "exec",
+            "-T",
+            "-e",
+            "JAVA_TOOL_OPTIONS=",
+            args.jfr_service,
+            "jcmd",
+            "1",
+            "JFR.stop",
+            f"name={recording.name}",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if dump.returncode != 0:
+        print(f"  JFR dump failed for {recording.name}: {command_result_text(dump)}")
+    if stop.returncode != 0:
+        print(f"  JFR stop failed for {recording.name}: {command_result_text(stop)}")
+    if dump.returncode != 0:
+        return
+
+    Path(recording.hostPath).parent.mkdir(parents=True, exist_ok=True)
+    copy = subprocess.run(
+        ["docker", "cp", f"{args.jfr_container}:{recording.containerPath}", recording.hostPath],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if copy.returncode != 0:
+        print(f"  JFR copy failed for {recording.name}: {command_result_text(copy)}")
+        return
+
+    summary = subprocess.run(
+        [
+            "docker",
+            "compose",
+            "exec",
+            "-T",
+            "-e",
+            "JAVA_TOOL_OPTIONS=",
+            args.jfr_service,
+            "jfr",
+            "summary",
+            recording.containerPath,
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if summary.returncode == 0:
+        Path(recording.summaryPath).write_text(command_result_text(summary) + "\n", encoding="utf-8")
+    else:
+        print(f"  JFR summary failed for {recording.name}: {command_result_text(summary)}")
+
+
+def sanitize_filename(value: str) -> str:
+    return "".join(ch if ch.isalnum() or ch in ("-", "_") else "-" for ch in value)
+
+
+def optional_str(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    return str(value)
+
+
+def optional_int(value: Any) -> Optional[int]:
+    if value is None:
+        return None
+    return int(value)
+
+
+def command_result_text(completed: subprocess.CompletedProcess[str]) -> str:
+    return "\n".join(part for part in [completed.stdout.strip(), completed.stderr.strip()] if part)
 
 
 def collect_prometheus_range(
@@ -373,6 +564,7 @@ def build_summary(
         "runId": run_id,
         "condition": args.condition,
         "mode": args.mode,
+        "benchmarkMode": args.benchmark_mode,
         "dataset": dataset_metadata(args),
         "strategies": {},
         "prometheus": summarize_prometheus(run_dir / "prometheus" / "range"),
@@ -384,13 +576,34 @@ def build_summary(
         ]
         elapsed = [sample.elapsedMs for sample in strategy_samples if sample.elapsedMs is not None]
         md5_values = sorted({sample.md5 for sample in strategy_samples if sample.md5})
+        row_counts = [sample.rowCount for sample in strategy_samples if sample.rowCount is not None]
+        attribute_value_counts = [
+            sample.attributeValueCount for sample in strategy_samples if sample.attributeValueCount is not None
+        ]
+        order_id_checksums = [
+            sample.orderIdChecksum for sample in strategy_samples if sample.orderIdChecksum is not None
+        ]
         summary["strategies"][strategy] = {
             "samples": len(strategy_samples),
             "elapsedMs": summarize_numbers(elapsed),
             "md5": {
                 "value": md5_values[0] if len(md5_values) == 1 else None,
-                "allMatched": len(md5_values) == 1,
+                "allMatched": len(md5_values) == 1 if md5_values else None,
                 "values": md5_values,
+            },
+            "rowDrain": {
+                "rowCount": row_counts[0] if len(set(row_counts)) == 1 else None,
+                "attributeValueCount": (
+                    attribute_value_counts[0] if len(set(attribute_value_counts)) == 1 else None
+                ),
+                "orderIdChecksum": order_id_checksums[0] if len(set(order_id_checksums)) == 1 else None,
+                "allMatched": (
+                    len(set(row_counts)) == 1
+                    and len(set(attribute_value_counts)) == 1
+                    and len(set(order_id_checksums)) == 1
+                    if row_counts or attribute_value_counts or order_id_checksums
+                    else None
+                ),
             },
             "rows": args.orders,
             "attrs": args.attrs,
@@ -469,6 +682,7 @@ def write_summary_markdown(path: Path, summary: dict[str, Any]) -> None:
         "",
         f"- Condition: `{summary['condition']}`",
         f"- Mode: `{summary['mode']}`",
+        f"- Benchmark mode: `{summary['benchmarkMode']}`",
         f"- Orders: `{summary['dataset']['orders']}`",
         f"- Attrs: `{summary['dataset']['attrs']}`",
         f"- Cells per sample: `{summary['dataset']['cells']}`",
@@ -489,9 +703,31 @@ def write_summary_markdown(path: Path, summary: dict[str, Any]) -> None:
                 iqr=value_or_dash(elapsed["iqr"]),
                 min_=value_or_dash(elapsed["min"]),
                 max_=value_or_dash(elapsed["max"]),
-                matched="yes" if md5["allMatched"] else "no",
+                matched=matched_label(md5["allMatched"]),
             )
         )
+
+    if any(values.get("rowDrain", {}).get("allMatched") is not None for values in summary["strategies"].values()):
+        lines.extend(
+            [
+                "",
+                "## Row Drain Evidence",
+                "",
+                "| Strategy | Row count | Attribute values | Order ID checksum | Matched |",
+                "| --- | ---: | ---: | ---: | --- |",
+            ]
+        )
+        for strategy, values in sorted(summary["strategies"].items()):
+            row_drain = values["rowDrain"]
+            lines.append(
+                "| {strategy} | {rows} | {attrs} | {checksum} | {matched} |".format(
+                    strategy=strategy,
+                    rows=value_or_dash(row_drain["rowCount"]),
+                    attrs=value_or_dash(row_drain["attributeValueCount"]),
+                    checksum=value_or_dash(row_drain["orderIdChecksum"]),
+                    matched=matched_label(row_drain["allMatched"]),
+                )
+            )
 
     lines.extend(["", "## Prometheus Summary", ""])
     if summary.get("prometheus"):
@@ -520,6 +756,12 @@ def value_or_dash(value: Any) -> Any:
     return "-" if value is None else value
 
 
+def matched_label(value: Optional[bool]) -> str:
+    if value is None:
+        return "n/a"
+    return "yes" if value else "no"
+
+
 def format_float(value: Any) -> str:
     if value is None:
         return "-"
@@ -539,6 +781,7 @@ def build_run_metadata(
         "runId": run_id,
         "createdAt": iso_now(),
         "mode": args.mode,
+        "benchmarkMode": args.benchmark_mode,
         "condition": args.condition,
         "dataset": dataset_metadata(args),
         "strategies": strategies,
@@ -546,6 +789,12 @@ def build_run_metadata(
         "measurementRuns": args.runs,
         "baseUrl": args.base_url,
         "prometheusUrl": args.prometheus_url,
+        "jfr": {
+            "enabled": args.jfr,
+            "service": args.jfr_service,
+            "container": args.jfr_container,
+            "settings": args.jfr_settings,
+        },
         "time": {
             "startEpochSec": start_epoch,
             "endEpochSec": end_epoch,
@@ -560,6 +809,7 @@ def dataset_metadata(args: argparse.Namespace) -> dict[str, Any]:
         "orders": args.orders,
         "attrs": args.attrs,
         "sparse": args.sparse,
+        "benchmarkMode": args.benchmark_mode,
         "fixedColumns": FIXED_COLUMN_COUNT,
         "cells": args.orders * (FIXED_COLUMN_COUNT + args.attrs),
     }
@@ -581,6 +831,12 @@ def collect_environment(args: argparse.Namespace) -> dict[str, Any]:
             "composeFile": "compose.yaml",
         },
         "jvmArgs": os.environ.get("JAVA_TOOL_OPTIONS"),
+        "jfr": {
+            "enabled": args.jfr,
+            "service": args.jfr_service,
+            "container": args.jfr_container,
+            "settings": args.jfr_settings,
+        },
         "prometheus": {
             "url": args.prometheus_url,
             "step": args.prometheus_step,
