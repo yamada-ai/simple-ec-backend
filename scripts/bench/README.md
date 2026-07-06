@@ -36,6 +36,21 @@ Prometheus は heap / GC / allocation / CPU の補助時系列として使う。
 
 Admin API 経由で benchmark 用データを投入する薄い wrapper。
 
+`N=30,000, A=15` 程度の baseline では使えるが、`N=30,000, A=120` の Wide dense では seed 処理自体が JVM heap を圧迫するため使わない。
+
+### `seed_benchmark_dataset_sql.sh`
+
+PostgreSQL の `generate_series` で benchmark 用データを直接投入する wrapper。
+
+Wide dense のように $V$ が大きい条件ではこちらを使う。アプリケーションの Admin API を経由しないため、seed 処理が backend JVM heap を消費しにくい。
+
+```bash
+ORDERS=30000 ATTRS=120 SEED=20260705 \
+  ./scripts/bench/seed_benchmark_dataset_sql.sh
+```
+
+生成される属性値は Admin API seed と同じく `v{definitionId}_{orderId % 10}` 形式である。
+
 ### `charts.py`
 
 run artifact から発表・記事用の静的チャートを生成する。
@@ -81,6 +96,18 @@ docker compose up -d backend prometheus
 
 ```bash
 ORDERS=30000 ATTRS=15 SEED=42 ./scripts/bench/seed_benchmark_dataset.sh
+```
+
+Sparse データ投入:
+
+```bash
+SPARSE=true ORDERS=30000 ATTRS=15 SEED=42 ./scripts/bench/seed_benchmark_dataset.sh
+```
+
+Wide dense のデータ投入:
+
+```bash
+ORDERS=30000 ATTRS=120 SEED=42 ./scripts/bench/seed_benchmark_dataset_sql.sh
 ```
 
 Benchmark:

@@ -6,6 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ORDERS="${ORDERS:-${1:-5000}}"
 ATTRS="${ATTRS:-${2:-15}}"
 SEED="${SEED:-${3:-42}}"
+SPARSE="${SPARSE:-false}"
 
 BASE_URL="${BASE_URL:-http://localhost:8080}"
 
@@ -20,6 +21,7 @@ echo "  Base URL: ${BASE_URL}"
 echo "  Customers: ${CUSTOMERS}"
 echo "  Orders: ${ORDERS}"
 echo "  Attributes: ${ATTRS}"
+echo "  Sparse: ${SPARSE}"
 echo "  Seed: ${SEED}"
 echo "=========================================="
 
@@ -40,6 +42,9 @@ echo "✓ Truncate completed"
 # Seed new data via Admin API
 echo "Seeding data..."
 SEED_URL="${BASE_URL}/admin/seed?customers=${CUSTOMERS}&orders=${ORDERS}&attrs=${ATTRS}&seed=${SEED}"
+if [[ "${SPARSE}" == "true" ]]; then
+  SEED_URL="${SEED_URL}&sparse=true"
+fi
 SEED_RESPONSE=$(curl -sS -X POST "$SEED_URL" -w "\n%{http_code}")
 HTTP_CODE=$(echo "$SEED_RESPONSE" | tail -n1)
 RESPONSE_BODY=$(echo "$SEED_RESPONSE" | sed '$d')
