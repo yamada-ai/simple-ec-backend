@@ -98,6 +98,19 @@ python3 scripts/bench/collect_explain.py \
   --run-dir docs/benchmark/runs/<run-id>
 ```
 
+PostgreSQLのsession settingを変えて比較する場合:
+
+```bash
+python3 scripts/bench/collect_explain.py \
+  --run-dir docs/benchmark/runs/<run-id> \
+  --strategies sql-pivot \
+  --pg-setting jit=off \
+  --label jit-off \
+  --runs 5
+```
+
+この場合、`explain/sql-pivot.jit-off.run01.explain.txt` のようにlabel付きのartifactとして保存し、`explain/summary.jit-off.csv` / `explain/summary.jit-off.json` に実行時間をまとめる。
+
 保存対象:
 
 - `vertical-join`: `sequence-window` / `spliterator-window` / `imperative-result-set` の共通入力形状

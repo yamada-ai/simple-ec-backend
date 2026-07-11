@@ -135,6 +135,17 @@ python3 scripts/bench/collect_explain.py \
   --run-dir docs/benchmark/runs/<run-id>
 ```
 
+PostgreSQLのsession settingを変えてSQL実行計画を比較する場合:
+
+```bash
+python3 scripts/bench/collect_explain.py \
+  --run-dir docs/benchmark/runs/<run-id> \
+  --strategies sql-pivot \
+  --pg-setting jit=off \
+  --label jit-off \
+  --runs 5
+```
+
 ## Next
 
 - P1: `isolated` mode を追加し、strategy ごとに JVM/container を再起動して heap / GC / allocation の帰属を明確にする。

@@ -707,6 +707,96 @@ Prometheus summary:
 - `multiset` は約10秒台で、Wide条件でも明確に遅い。
 - `imperative-result-set` は最速だが、measurement前半と後半で二段階に分かれているため、focused stability run で定常値を確認する。
 
+## Cost Split: CSV / Rows / EXPLAIN
+
+Fableレビューで指摘された「どこでコストを払っているか」を推測だけにしないため、追加で `benchmarkMode=rows` と `EXPLAIN (ANALYZE, BUFFERS)` を取得した。
+
+`rows` はCSV writerとMD5計算を外し、schema loadingと各戦略の row source 消費だけを測る。`csv - rows` は、概ね `OrderAttributeCsvRow.toRecord()` とCSV writer側の追加コストを見るための参考値である。
+
+`EXPLAIN ANALYZE` はCSV writerやjOOQ/JDBC mappingを含まないDB側の実行形状である。ただし、benchmark APIとは別実行であり、`EXPLAIN ANALYZE` 自体の計測オーバーヘッドもあるため、厳密に `elapsed = T_{\text{DB}} + T_{\text{app}}` と分解する値ではない。同じオーダーか、どのSQL形状がDB側で重いかを見る証跡として扱う。
+
+追加run:
+
+```text
+docs/benchmark/runs/sparse_30k_15_rows_cost_split_20260707/
+docs/benchmark/runs/baseline_30k_15_rows_cost_split_20260707/
+docs/benchmark/runs/wide_30k_120_rows_cost_split_20260707/
+docs/benchmark/runs/wide_30k_120_rows_jfr_20260707/
+```
+
+### Baseline Cost Split
+
+| Strategy | CSV median | Rows median | CSV - Rows | EXPLAIN SQL shape | EXPLAIN execution |
+| --- | ---: | ---: | ---: | --- | ---: |
+| preload | 325 ms | 238 ms | 87 ms | preload-base + preload-attributes | 135.1 ms |
+| multiset | 1414 ms | 1339 ms | 75 ms | not collected | - |
+| sequence-window | 586 ms | 448 ms | 138 ms | vertical-join | 197.6 ms |
+| spliterator-window | 571 ms | 447 ms | 124 ms | vertical-join | 197.6 ms |
+| imperative-result-set | 490 ms | 369 ms | 121 ms | vertical-join | 197.6 ms |
+| json-aggregation | 505 ms | 413 ms | 92 ms | json-aggregation | 401.8 ms |
+| sql-pivot | 389 ms | 332 ms | 57 ms | sql-pivot | 369.8 ms |
+
+読み取り:
+
+- `sql-pivot` と `json-aggregation` は、Baselineではrows elapsedとEXPLAIN executionが近い。少なくともこの条件ではDB側の集約・pivot処理が支配的な候補である。
+- window系はrows elapsedがEXPLAINよりかなり大きい。DBから縦持ち行を受け取った後のjOOQ/JDBC mapping、ordered group fold、`OrderAttributeCsvRow` 生成が残っている。
+- CSV writerを外すと全戦略で短くなるが、BaselineではCSV出力だけが支配しているわけではない。
+
+### Sparse Cost Split
+
+| Strategy | CSV median | Rows median | CSV - Rows | EXPLAIN SQL shape | EXPLAIN execution |
+| --- | ---: | ---: | ---: | --- | ---: |
+| preload | 148 ms | 77 ms | 71 ms | preload-base + preload-attributes | 54.0 ms |
+| multiset | 392 ms | 261 ms | 131 ms | not collected | - |
+| sequence-window | 126 ms | 93 ms | 33 ms | vertical-join | 69.5 ms |
+| spliterator-window | 125 ms | 94 ms | 31 ms | vertical-join | 69.5 ms |
+| imperative-result-set | 115 ms | 84 ms | 31 ms | vertical-join | 69.5 ms |
+| json-aggregation | 159 ms | 118 ms | 41 ms | json-aggregation | 108.4 ms |
+| sql-pivot | 338 ms | 112 ms | 226 ms | sql-pivot | 94.3 ms |
+
+読み取り:
+
+- Sparseではwindow系とimperative-result-setがかなり軽い。$V$ が小さいため、縦持ち入力を1パスで畳むコストが大きく下がる。
+- `sql-pivot` のrows medianは112msまで下がる一方、CSV medianは338msで重い。rows modeでも $A$ 個のpivot field走査は残るが、CSV modeではさらに固定ヘッダCSVとして $N \cdot A$ の空セル出力が乗る。
+- Sparse入力でもCSVはdense出力なので、`csv - rows` が無視できない。この差は「入力が疎でも出力下界は残る」という問題モデルの実測側の裏付けになる。
+
+### Wide Cost Split
+
+| Strategy | CSV median | Rows median | CSV - Rows | EXPLAIN SQL shape | EXPLAIN execution |
+| --- | ---: | ---: | ---: | --- | ---: |
+| sequence-window | 4377 ms | 4154 ms | 223 ms | vertical-join | 2175.6 ms |
+| spliterator-window | 4666 ms | 4127 ms | 539 ms | vertical-join | 2175.6 ms |
+| imperative-result-set | 3832 ms | 3581 ms | 251 ms | vertical-join | 2175.6 ms |
+| json-aggregation | 4053 ms | 3787 ms | 266 ms | json-aggregation | 4197.2 ms |
+| sql-pivot | 4806 ms | 4619 ms | 187 ms | sql-pivot | 5331.0 ms |
+
+読み取り:
+
+- Wideでは `sql-pivot` のEXPLAIN executionが最も重い。$A=120$ の条件付き集約がDB側で明確に効いている。
+- 以前の「DB側CASE WHENか、JVM側pivot field走査か、両方候補」という表現は広すぎた。Wideの証跡では、少なくとも `sql-pivot` 失速の大きな部分はDB側にあると見てよい。
+- `json-aggregation` もEXPLAIN executionがrows elapsedと同程度で、DB側JSONB集約が重い。ただしJVM側JSON parseも残るため、JFR/JMCでallocation profileを確認する。
+- window系はEXPLAINよりrows elapsedが大きい。DBのvertical joinだけでなく、3.6M行の転送、Record/JDBC mapping、order境界のfold、Map構築が効いている。
+- Wide JFRは `sequence-window`, `json-aggregation`, `sql-pivot` の3戦略で取得済み。ただしJFR有効時のelapsedは正式比較ではなく、プロファイリング専用の別artifactとして扱う。
+
+#### JIT仮説の検証と訂正
+
+`sql-pivot` のEXPLAIN executionにはJITコンパイル時間が含まれている。初回のWide EXPLAINでは `JIT Total = 1378.769 ms`, `Execution Time = 5330.969 ms` であり、実行時間の約26%をJITが占めていた。
+
+このため「PostgreSQLのJITヒューリスティックが、このクエリ形状に対して割に合わない最適化を選んでいる」という仮説を立て、同じSQLを `SET jit = off` で再実行した。
+
+5runで取り直した結果は以下である。
+
+| Setting | Samples | Execution median | Execution IQR | JIT total median | JIT total IQR |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `jit=on` | 5 | 4768.3 ms | 92.7 ms | 1109.4 ms | 11.2 ms |
+| `jit=off` | 5 | 5512.5 ms | 34.5 ms | - | - |
+
+`jit=off` による明確な改善は見られなかった。むしろ、この5runでは `jit=off` の方が約744ms遅い。JITコンパイルコストは確かに約1.1秒あるが、無効化しても総実行時間が短くなる結果にはなっていない。
+
+したがって「PostgreSQLのJIT判断が明確に外している」とは言えない。より正確には、`sql-pivot` は $A=120$ の条件付き集約によってDB側で非常に式評価の重いクエリになっており、JITは大きな初期コストとして観測されるが、無効化すれば改善する類のボトルネックではなかった。
+
+EXPLAIN executionが `rows` medianを上回る逆転自体は残っている。これはJITだけでは説明できず、`EXPLAIN ANALYZE` 自体のper-node instrumentationオーバーヘッドも含まれる可能性がある。切り分けたい場合は `EXPLAIN (ANALYZE, BUFFERS, TIMING OFF)` との比較が次の一手である。現時点の慎重な結論は、「SQL PivotはWide条件でDB側の条件付き集約が重く、JIT無効化では改善しなかった」である。
+
 ## 報告すべきメトリクス（Metrics To Report）
 
 最低限:
