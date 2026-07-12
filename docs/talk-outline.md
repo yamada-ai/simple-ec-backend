@@ -141,7 +141,7 @@ Sequence、自作Spliterator、jOOQ MULTISET、SQL側の横展開まで7通り�
 
 ### セッション詳細（2,000字以内・非公開/審査のみ）
 
-1752字。codexレビュー2回目で「Wikipediaを直接の根拠として強く出すのは危うい」「Kotlinの抽象コストは"実質ゼロ"は言い過ぎ」と指摘され、Wikipedia由来の記述を「定石として紹介されている」に弱め、"実質ゼロ"を"支配的ではなかった"に修正。3回目のレビューで(3)冒頭の段落にも同じ「Wikipediaにも定石として明記」という強い表現が残っていた点を指摘され、「この文脈でよく紹介される定石の一つ」に統一。
+1939字。レビュー2回目で「Wikipediaを直接の根拠として強く出すのは危うい」「Kotlinの抽象コストは"実質ゼロ"は言い過ぎ」と指摘され、Wikipedia由来の記述を「定石として紹介されている」に弱め、"実質ゼロ"を"支配的ではなかった"に修正。3回目のレビューで(3)冒頭にも同じ強い表現が残っていた点を修正。4回目のレビュー（claude web）で、(4)が15分の配分に対して薄いこと、(1)に問いが無いまま(2)へ繋がること、(2)にΘ(V)のメモリモデルが無いままΘ(V)の話が(4)末尾で唐突に出ることを指摘され、(1)末尾に問いを追加、(2)にΘ(V)/Θ(A+a_max)のメモリモデルを追加、(4)に測定設計（Prometheus/EXPLAIN ANALYZE）とJIT仮説検証・棄却の経緯を追加。
 
 ```text
 (1) 導入：CSVに横展開するときの壁 [5分]
@@ -151,10 +151,10 @@ Sequence、自作Spliterator、jOOQ MULTISET、SQL側の横展開まで7通り�
 ・groupingBy/associateはキー単位の全件materializeが前提
 ・SQLのJOINはDB側の話で、JVM側でStreamを維持したまま結合する標準APIではない
 
-結局、属性値を先に全部メモリのMapへ読み込んでから注文をループする形に倒し、負荷テストでも問題にならなかったため、実務ではこの形に倒れがちです。
+結局、属性値を先に全部メモリのMapへ読み込んでから注文をループする形に倒し、負荷テストでも問題にならなかったため、実務ではこの形に倒れがちです。本当にそれでよかったのか。
 
 (2) 問題のモデル化 [5分]
-注文数N、属性定義数A、属性値総数V、1注文あたり最大属性数a_maxを定義します。正しいCSVを出す限り、出力サイズはΩ(N・A)になります。入力がどれだけ疎（Vが小さい）でも、固定ヘッダCSVは密な出力になるという主張の根拠を示します。
+注文数N、属性定義数A、属性値総数V、1注文あたり最大属性数a_maxを定義します。正しいCSVを出す限り、出力サイズはΩ(N・A)になります。入力がどれだけ疎（Vが小さい）でも、固定ヘッダCSVは密な出力になるという主張の根拠を示します。メモリ量にも同じ構図があり、preloadは全属性値を保持するためΘ(V)、windowingは1注文分だけを保持するためΘ(A+a_max)です。
 
 ・N: 注文数（実務では上限なし）
 ・A: 属性定義数（実務では15固定）
@@ -171,13 +171,13 @@ Sequence、自作Spliterator、jOOQ MULTISET、SQL側の横展開まで7通り�
 定石は正しい。その上で、なぜ自分はそれを問題だと感じたのかを次で話します。
 
 (4) 7戦略の実装と実測 [15分]
-preload、jOOQ MULTISET、Kotlin Sequence windowing、自作Spliterator windowing、SQL側条件付き集約(pivot)、JDBC手続きbaseline、jsonb_object_aggの7実装を、Baseline/Sparse/Wideの3条件で比較します。
+preload、jOOQ MULTISET、Kotlin Sequence windowing、自作Spliterator windowing、SQL側条件付き集約(pivot)、JDBC手続きbaseline、jsonb_object_aggの7実装を、Baseline/Sparse/Wideの3条件で比較します。elapsedとMD5に加え、Prometheusでheap/GC/allocationを、EXPLAIN ANALYZEでDB側実行計画も記録します。
 
 ・Baselineでは理論上最も危ういpreloadが最速(325ms)
 ・Sparseでは逆転し、window系がpreloadを上回る
 ・Kotlin SequenceとSpliterator手書きに有意差なし
 ・jOOQ MULTISETは条件によって2.6〜4.3倍遅く、PostgreSQLのJSONB系エミュレーションの影響が見える
-・SQL PivotはWideでPostgreSQLのJITまで巻き込むほど式評価が重くなる
+・SQL PivotはWideで条件付き集約が重く、JITコストが原因という仮説も検証したが、無効化しても改善せず、集約自体が原因と分かった
 ・Wideではpreloadがheap上限に張り付き測定から除外、Θ(V)の危険性を実演
 
 (5) まとめ：Kotlinへの着地 [5分]
